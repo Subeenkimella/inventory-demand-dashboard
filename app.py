@@ -28,8 +28,8 @@ latest_date = con.execute("SELECT MAX(date) FROM inventory_daily").fetchone()[0]
 
 # Sidebar filters
 st.sidebar.header("필터")
-cat = st.sidebar.selectbox("카테고리", ["ALL"] + sorted(sku["카테고리"].unique()))
-wh = st.sidebar.selectbox("창고", ["ALL"] + sorted(inv["창고"].unique()))
+cat = st.sidebar.selectbox("카테고리", ["ALL"] + sorted(sku["category"].unique()))
+wh = st.sidebar.selectbox("창고", ["ALL"] + sorted(inv["warehouse"].unique()))
 sku_pick = st.sidebar.selectbox("SKU", ["ALL"] + sorted(sku["sku"].unique()))
 
 # Build WHERE clauses
