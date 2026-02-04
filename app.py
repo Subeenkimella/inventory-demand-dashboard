@@ -234,15 +234,15 @@ with tab_summary:
     col1.metric("총 재고 수량", total_onhand)
     col2.metric("최근 7일 수요", total_demand_7d)
     col3.metric("평균 재고 (필터 기준)", f"{avg_onhand:,.1f}")
-    col4.metric("품절 위험 SKUs (<7일)", stockout_cnt)
+    col4.metric("품절 위험 SKUs (7일 이내)", stockout_cnt)
 
 
     # Demand trend
-    fig_trend = px.line(trend, x="date", y="demand_qty", title="최근 60일 수요 추이")
+    fig_trend = px.line(trend, x="date", y="demand_qty", title="수요 추이 (최근 60일)")
     st.plotly_chart(fig_trend, use_container_width=True)
 
     # Top 10 SKUs
-    fig_top = px.bar(top, x="sku", y="demand_30d", title="최근 30일 수요 TOP 10 SKU")
+    fig_top = px.bar(top, x="sku", y="demand_30d", title="수요 TOP 10 SKU (최근 30일)")
     st.plotly_chart(fig_top, use_container_width=True)
 
 with tab_risk:
@@ -251,7 +251,7 @@ with tab_risk:
     st.dataframe(risk, use_container_width=True)
 
 with tab_reorder:
-    st.subheader("🔄 발주 제안 리스트")
+    st.subheader("🔄 발주 제안 목록")
     st.caption("추천 발주 수량 = max(재주문 기준 - 현재 재고, 0)")
     st.dataframe(reorder_suggest, use_container_width=True)
 
