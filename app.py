@@ -240,6 +240,7 @@ with tab_summary:
     # Demand trend
     fig_trend = px.line(trend, x="date", y="demand_qty", title="수요 추이 (최근 60일)")
     fig_trend.update_layout(xaxis_title="날짜", yaxis_title="수요량")
+    fig_trend.update_xaxes(tickformat="%Y-%m-%d")
     st.plotly_chart(fig_trend, use_container_width=True)
 
     # Top 10 SKUs
