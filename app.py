@@ -3,7 +3,7 @@ import pandas as pd
 import duckdb
 import plotly.express as px
 
-st.set_page_config(page_title="Inventory & Demand Dashboard", layout="wide")
+st.set_page_config(page_title="재고·수요 모니터링 대시보드", layout="wide")
 
 @st.cache_data
 def load_data():
@@ -20,16 +20,16 @@ con.register("sku_master", sku)
 con.register("demand_daily", demand)
 con.register("inventory_daily", inv)
 
-st.title("📦 Inventory & Demand Monitoring Dashboard")
-st.caption("Sample CSV data → Metrics computed via SQL (DuckDB).")
+st.title("📦 재고·수요 모니터링 대시보드")
+st.caption("샘플 CSV 데이터 기반으로 SQL(DuckDB)로 KPI를 계산")
 
 # Latest snapshot date
 latest_date = con.execute("SELECT MAX(date) FROM inventory_daily").fetchone()[0]
 
 # Sidebar filters
-st.sidebar.header("Filters")
-cat = st.sidebar.selectbox("Category", ["ALL"] + sorted(sku["category"].unique()))
-wh = st.sidebar.selectbox("Warehouse", ["ALL"] + sorted(inv["warehouse"].unique()))
+st.sidebar.header("필터")
+cat = st.sidebar.selectbox("카테고리", ["ALL"] + sorted(sku["카테고리"].unique()))
+wh = st.sidebar.selectbox("창고", ["ALL"] + sorted(inv["창고"].unique()))
 sku_pick = st.sidebar.selectbox("SKU", ["ALL"] + sorted(sku["sku"].unique()))
 
 # Build WHERE clauses
@@ -219,10 +219,10 @@ LIMIT 50
 reorder_suggest = con.execute(reorder_sql).fetchdf()
 
 # --- Tabs ---
-tab_summary, tab_risk, tab_reorder = st.tabs(["Summary", "Risk", "Reorder"])
+tab_summary, tab_risk, tab_reorder = st.tabs(["요약", "리스크", "발주 제안"])
 
 with tab_summary:
-    st.subheader("Key Metrics")
+    st.subheader("핵심 지표")
     col1, col2, col3, col4 = st.columns(4)
 
     # NaN / None 안전 처리
@@ -231,31 +231,31 @@ with tab_summary:
     avg_onhand = float(pd.to_numeric(kpi["avg_onhand"], errors="coerce")) if pd.notna(kpi["avg_onhand"]) else 0
     stockout_cnt = int(pd.to_numeric(kpi["stockout_risk_sku_cnt"], errors="coerce")) if pd.notna(kpi["stockout_risk_sku_cnt"]) else 0
 
-    col1.metric("Total On-hand", total_onhand)
-    col2.metric("Demand (Last 7 Days)", total_demand_7d)
-    col3.metric("Avg On-hand (Filtered)", f"{avg_onhand:,.1f}")
-    col4.metric("Stockout Risk SKUs (<7d)", stockout_cnt)
+    col1.metric("총 재고 수량", total_onhand)
+    col2.metric("최근 7일 수요", total_demand_7d)
+    col3.metric("평균 재고 (필터 기준)", f"{avg_onhand:,.1f}")
+    col4.metric("품절 위험 SKUs (<7일)", stockout_cnt)
 
 
     # Demand trend
-    fig_trend = px.line(trend, x="date", y="demand_qty", title="Demand Trend (Last 60 Days)")
+    fig_trend = px.line(trend, x="date", y="demand_qty", title="최근 60일 수요 추이")
     st.plotly_chart(fig_trend, use_container_width=True)
 
     # Top 10 SKUs
-    fig_top = px.bar(top, x="sku", y="demand_30d", title="Top 10 SKUs by Demand (Last 30 Days)")
+    fig_top = px.bar(top, x="sku", y="demand_30d", title="최근 30일 수요 TOP 10 SKU")
     st.plotly_chart(fig_top, use_container_width=True)
 
 with tab_risk:
-    st.subheader("⚠️ Stockout Risk List (by Coverage Days)")
-    st.caption("coverage_days = onhand_qty / avg_daily_demand_14d")
+    st.subheader("⚠️ 재고 리스크 목록")
+    st.caption("커버리지 일수 = 현재 재고 / 최근 14일 평균 일수요")
     st.dataframe(risk, use_container_width=True)
 
 with tab_reorder:
-    st.subheader("🔄 Reorder Suggestions")
-    st.caption("recommended_reorder_qty = max(reorder_point - onhand_qty, 0)")
+    st.subheader("🔄 발주 제안 리스트")
+    st.caption("추천 발주 수량 = max(재주문 기준 - 현재 재고, 0)")
     st.dataframe(reorder_suggest, use_container_width=True)
 
-with st.expander("Show SQL (proof)"):
+with st.expander("SQL 코드 보기"):
     st.code(kpi_sql, language="sql")
     st.code(trend_sql, language="sql")
     st.code(top_sql, language="sql")
