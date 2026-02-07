@@ -68,12 +68,14 @@ cat = st.sidebar.selectbox(
 
 wh = st.sidebar.selectbox(
     "창고",
-    ["ALL"] + sorted(inv["warehouse"].unique())
+    options=["ALL"] + sorted(sku["category"].unique()),
+    format_func=lambda x: category_map.get(x, x)
 )
 
 sku_pick = st.sidebar.selectbox(
     "SKU",
-    ["ALL"] + sorted(sku["sku"].unique())
+    options=["ALL"] + sorted(sku["category"].unique()),
+    format_func=lambda x: category_map.get(x, x)
 )
 
 # Build WHERE clauses
