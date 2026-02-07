@@ -210,7 +210,6 @@ base AS (
 SELECT *
 FROM base
 ORDER BY coverage_days ASC NULLS LAST
-LIMIT 30
 """
 risk = con.execute(risk_sql).fetchdf()
 
@@ -269,7 +268,7 @@ LIMIT 50
 reorder_suggest = con.execute(reorder_sql).fetchdf()
 
 # --- Tabs ---
-tab_summary, tab_risk, tab_reorder = st.tabs(["재고 현황 Overview", "품절 리스크 SKU", "발주 필요 SKU"])
+tab_summary, tab_risk, tab_reorder = st.tabs(["재고 현황 Overview", "재고 리스크 SKU", "발주 필요 SKU"])
 
 with tab_summary:
     st.subheader("핵심 지표")
@@ -303,8 +302,17 @@ with tab_summary:
 
 with tab_risk:
     st.subheader("⚠️ 재고 리스크 목록")
+    risk_period = st.selectbox(
+        "리스크 기간 (커버리지 일수 기준)",
+        options=[7, 14, 21, 30, 60],
+        format_func=lambda x: f"{x}일 이내",
+        key="risk_period",
+    )
+    risk_filtered = risk[
+        (risk["coverage_days"].notna()) & (risk["coverage_days"] < risk_period)
+    ].copy()
     st.caption("커버리지 일수 = 현재 재고 / 최근 14일 평균 일수요")
-    st.dataframe(risk, use_container_width=True)
+    st.dataframe(risk_filtered, use_container_width=True)
 
 with tab_reorder:
     st.subheader("🔄 발주 필요 목록")
