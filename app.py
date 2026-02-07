@@ -123,12 +123,20 @@ inv_7d AS (
   WHERE i.date >= '{latest_date}'::DATE - INTERVAL 7 DAY AND i.date <= '{latest_date}'
     {"AND i.warehouse = '"+wh+"'" if wh!="ALL" else ""}
   GROUP BY i.date
+),
+inv_30d AS (
+  SELECT i.date, SUM(i.onhand_qty) AS day_total
+  FROM inventory_daily i
+  JOIN base_sku b ON i.sku = b.sku
+  WHERE i.date >= '{latest_date}'::DATE - INTERVAL 30 DAY AND i.date <= '{latest_date}'
+    {"AND i.warehouse = '"+wh+"'" if wh!="ALL" else ""}
+  GROUP BY i.date
 )
 SELECT
   COALESCE(SUM(COALESCE(li.onhand_qty,0)), 0) AS total_onhand,
   (SELECT COALESCE(ROUND(AVG(day_total), 0), 0) FROM inv_7d) AS inv_7d_avg,
   COALESCE(SUM(COALESCE(d7.demand_7d,0)), 0) AS total_demand_7d,
-  ROUND(COALESCE(AVG(COALESCE(li.onhand_qty,0)), 0), 1) AS avg_onhand,
+  (SELECT COALESCE(ROUND(AVG(day_total), 1), 0) FROM inv_30d) AS avg_onhand_30d,
   SUM(
     CASE
       WHEN COALESCE(d7.demand_7d,0) = 0 THEN 0
@@ -320,14 +328,15 @@ with tab_summary:
     total_onhand = int(pd.to_numeric(kpi["total_onhand"], errors="coerce")) if pd.notna(kpi["total_onhand"]) else 0
     inv_7d_avg = int(pd.to_numeric(kpi["inv_7d_avg"], errors="coerce")) if pd.notna(kpi["inv_7d_avg"]) else 0
     total_demand_7d = int(pd.to_numeric(kpi["total_demand_7d"], errors="coerce")) if pd.notna(kpi["total_demand_7d"]) else 0
-    avg_onhand = float(pd.to_numeric(kpi["avg_onhand"], errors="coerce")) if pd.notna(kpi["avg_onhand"]) else 0
+    avg_onhand_30d = float(pd.to_numeric(kpi["avg_onhand_30d"], errors="coerce")) if pd.notna(kpi["avg_onhand_30d"]) else 0
     stockout_cnt = int(pd.to_numeric(kpi["stockout_risk_sku_cnt"], errors="coerce")) if pd.notna(kpi["stockout_risk_sku_cnt"]) else 0
 
     col1.metric("총 재고 수량", f"{total_onhand:,}")
     col2.metric("최근 7일 재고 수량", f"{inv_7d_avg:,}")
     col3.metric("최근 7일 수요", f"{total_demand_7d:,}")
-    col4.metric("평균 재고", f"{avg_onhand:,.1f}")
+    col4.metric("최근 30일 평균 재고", f"{avg_onhand_30d:,.1f}")
     col5.metric("품절 위험 SKU수 (7일 이내)", stockout_cnt)
+    st.caption("최근 30일 평균 재고 = 최근 30일 동안 일별 총 재고 수량의 평균 (필터: 카테고리·SKU·창고 적용)")
 
 
     # Demand trend
