@@ -222,7 +222,7 @@ LIMIT 50
 reorder_suggest = con.execute(reorder_sql).fetchdf()
 
 # --- Tabs ---
-tab_summary, tab_risk, tab_reorder = st.tabs(["요약", "리스크", "발주 제안"])
+tab_summary, tab_risk, tab_reorder = st.tabs(["요약", "재고 리스크", "발주 필요"])
 
 with tab_summary:
     st.subheader("핵심 지표")
