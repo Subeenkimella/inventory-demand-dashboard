@@ -276,8 +276,8 @@ with tab_summary:
     avg_onhand = float(pd.to_numeric(kpi["avg_onhand"], errors="coerce")) if pd.notna(kpi["avg_onhand"]) else 0
     stockout_cnt = int(pd.to_numeric(kpi["stockout_risk_sku_cnt"], errors="coerce")) if pd.notna(kpi["stockout_risk_sku_cnt"]) else 0
 
-    col1.metric("총 재고 수량", total_onhand)
-    col2.metric("최근 7일 수요", total_demand_7d)
+    col1.metric("총 재고 수량", f"{total_onhand:,}")
+    col2.metric("최근 7일 수요", f"{total_demand_7d:,}")
     col3.metric("평균 재고 (필터 기준)", f"{avg_onhand:,.1f}")
     col4.metric("품절 위험 SKUs (7일 이내)", stockout_cnt)
 
