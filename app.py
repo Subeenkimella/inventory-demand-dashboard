@@ -38,11 +38,41 @@ st.caption("샘플 CSV 데이터 기반으로 SQL(DuckDB)로 KPI를 계산")
 # Latest snapshot date
 latest_date = con.execute("SELECT MAX(date) FROM inventory_daily").fetchone()[0]
 
+category_map = {
+  "ALL": "전체",
+  "Motor": "모터",
+  "Brake": "브레이크",
+  "Steering": "스티어링",
+  "Sensor": "센서",
+}
+
+warehouse_map = {
+  "WH-1": "창고 1",
+  "WH-2": "창고 2",
+}
+
+plant_map = {
+  "PLANT-A": "공장 A",
+  "PLANT-B": "공장 B",
+}
+
 # Sidebar filters
 st.sidebar.header("필터")
-cat = st.sidebar.selectbox("카테고리", ["ALL"] + sorted(sku["category"].unique()))
-wh = st.sidebar.selectbox("창고", ["ALL"] + sorted(inv["warehouse"].unique()))
-sku_pick = st.sidebar.selectbox("SKU", ["ALL"] + sorted(sku["sku"].unique()))
+cat = st.sidebar.selectbox(
+    "카테고리",
+    options=["ALL"] + sorted(sku["category"].unique()),
+    format_func=lambda x: category_map.get(x, x)
+)
+
+wh = st.sidebar.selectbox(
+    "창고",
+    ["ALL"] + sorted(inv["warehouse"].unique())
+)
+
+sku_pick = st.sidebar.selectbox(
+    "SKU",
+    ["ALL"] + sorted(sku["sku"].unique())
+)
 
 # Build WHERE clauses
 where_m = "WHERE 1=1"
