@@ -268,10 +268,10 @@ LIMIT 50
 reorder_suggest = con.execute(reorder_sql).fetchdf()
 
 # --- Tabs ---
-tab_summary, tab_risk, tab_reorder = st.tabs(["재고 현황 Overview", "재고 리스크 SKU", "발주 필요 SKU"])
+tab_summary, tab_risk, tab_reorder = st.tabs(["재고 현황 Overview", "재고 리스크 분석", "발주 필요 분석"])
 
 with tab_summary:
-    st.subheader("핵심 지표")
+    st.subheader("KPI Overview")
     col1, col2, col3, col4 = st.columns(4)
 
     # NaN / None 안전 처리
@@ -282,8 +282,8 @@ with tab_summary:
 
     col1.metric("총 재고 수량", f"{total_onhand:,}")
     col2.metric("최근 7일 수요", f"{total_demand_7d:,}")
-    col3.metric("평균 재고 (필터 기준)", f"{avg_onhand:,.1f}")
-    col4.metric("품절 위험 SKUs (7일 이내)", stockout_cnt)
+    col3.metric("평균 재고", f"{avg_onhand:,.1f}")
+    col4.metric("품절 위험 SKU수 (7일 이내)", stockout_cnt)
 
 
     # Demand trend
