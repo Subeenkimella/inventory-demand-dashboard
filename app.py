@@ -32,6 +32,11 @@ con.register("sku_master", sku)
 con.register("demand_daily", demand)
 con.register("inventory_daily", inv)
 
+st.markdown("""
+<style>
+    h1 { font-size: 2.08rem !important; }
+</style>
+""", unsafe_allow_html=True)
 st.title("📦 재고·수요 모니터링 대시보드")
 st.caption("샘플 CSV 데이터 기반으로 SQL(DuckDB)로 KPI를 계산")
 
