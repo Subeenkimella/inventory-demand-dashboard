@@ -12,7 +12,11 @@ def apply_plotly_theme(fig):
         title_font=dict(size=16),
         legend_font=dict(size=12),
         xaxis=dict(showgrid=True, gridcolor="#e5e5e5"),
-        yaxis=dict(showgrid=True, gridcolor="#e5e5e5"),
+        yaxis=dict(
+            showgrid=True,
+            gridcolor="#e5e5e5",
+            tickformat=",.0f",
+        ),
         margin=dict(l=40, r=20, t=60, b=40),
     )
     return fig
