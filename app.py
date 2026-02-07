@@ -3,7 +3,7 @@ import pandas as pd
 import duckdb
 import plotly.express as px
 
-st.set_page_config(page_title="재고·수요 모니터링 대시보드", layout="wide")
+st.set_page_config(page_title="재고 모니터링 대시보드", layout="wide")
 
 def apply_plotly_theme(fig):
     fig.update_layout(
