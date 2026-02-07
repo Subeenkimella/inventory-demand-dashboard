@@ -303,7 +303,7 @@ with tab_summary:
 with tab_risk:
     st.subheader("⚠️ 재고 리스크 목록")
     risk_period = st.selectbox(
-        "리스크 기간 (커버리지 일수 기준)",
+        "재고 소진 기준(일수)",
         options=[7, 14, 21, 30, 60],
         format_func=lambda x: f"{x}일 이내",
         key="risk_period",
