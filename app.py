@@ -154,7 +154,6 @@ WITH base_sku AS (
   FROM sku_master m
   WHERE 1=1
     {"AND m.category = '"+cat+"'" if cat!="ALL" else ""}
-    {"AND m.sku = '"+sku_pick+"'" if sku_pick!="ALL" else ""}
     {"AND EXISTS (SELECT 1 FROM inventory_daily i WHERE i.sku = m.sku AND i.warehouse = '"+wh+"')" if wh!="ALL" else ""}
 )
 SELECT d.sku, SUM(d.demand_qty) AS demand_30d
