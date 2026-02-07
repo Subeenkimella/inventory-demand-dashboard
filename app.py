@@ -1,13 +1,12 @@
-st.warning("DEPLOY CHECK: app.py undated")
-
-
-
 import streamlit as st
 import pandas as pd
 import duckdb
 import plotly.express as px
 
 st.set_page_config(page_title="재고·수요 모니터링 대시보드", layout="wide")
+
+st.warning("DEPLOY CHECK: app.py undated")
+
 
 @st.cache_data
 def load_data():
