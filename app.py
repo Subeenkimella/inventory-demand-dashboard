@@ -213,6 +213,19 @@ ORDER BY coverage_days ASC NULLS LAST
 """
 risk = con.execute(risk_sql).fetchdf()
 
+def assign_risk_level(days):
+    if pd.isna(days):
+        return "Low"
+    if days < 3:
+        return "Critical"
+    if days < 7:
+        return "High"
+    if days < 14:
+        return "Medium"
+    return "Low"
+
+risk["risk_level"] = risk["coverage_days"].apply(assign_risk_level)
+
 # --- Reorder Suggestions Table (Reorder Tab) ---
 reorder_sql = f"""
 WITH base_sku AS (
@@ -310,10 +323,17 @@ with tab_risk:
             format_func=lambda x: f"{x}일 이내",
             key="risk_period",
         )
+        risk_level = st.selectbox(
+            "Risk Level",
+            options=["전체", "Critical", "High", "Medium", "Low"],
+            key="risk_level",
+        )
     risk_filtered = risk[
         (risk["coverage_days"].notna()) & (risk["coverage_days"] < risk_period)
     ].copy()
-    st.caption("커버리지 일수 = 현재 재고 / 최근 14일 평균 일수요")
+    if risk_level != "전체":
+        risk_filtered = risk_filtered[risk_filtered["risk_level"] == risk_level]
+    st.caption("커버리지 일수 = 현재 재고 / 최근 14일 평균 일수요 | Risk Level: Critical 0~3일, High 3~7일, Medium 7~14일, Low 14일 이상")
     st.dataframe(risk_filtered, use_container_width=True)
 
 with tab_reorder:
