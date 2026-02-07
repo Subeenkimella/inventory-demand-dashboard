@@ -8,7 +8,6 @@ st.set_page_config(page_title="재고·수요 모니터링 대시보드", layout
 def apply_plotly_theme(fig):
     fig.update_layout(
         template="plotly_white",
-        height=320,
         font=dict(size=13),
         title_font=dict(size=16),
         legend_font=dict(size=12),
