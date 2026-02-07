@@ -377,19 +377,21 @@ with tab_summary:
         fig_inv_trend = apply_plotly_theme(fig_inv_trend)
         st.plotly_chart(fig_inv_trend, use_container_width=True)
 
-    # Top 10 SKUs - Demand
-    fig_top = px.bar(top, x="sku", y="demand_30d", title="수요 TOP 10 SKU (최근 30일)")
-    fig_top.update_layout(xaxis_title="SKU", yaxis_title="수요량 (최근 30일)")
-    fig_top.update_traces(width=0.5)
-    fig_top = apply_plotly_theme(fig_top)
-    st.plotly_chart(fig_top, use_container_width=True)
-
-    # Top 10 SKUs - Inventory
-    fig_top_inv = px.bar(top_inv, x="sku", y="onhand_30d", title="재고 TOP 10 SKU (최근 30일)")
-    fig_top_inv.update_layout(xaxis_title="SKU", yaxis_title="재고 수량 (최근 30일 합계)")
-    fig_top_inv.update_traces(width=0.5)
-    fig_top_inv = apply_plotly_theme(fig_top_inv)
-    st.plotly_chart(fig_top_inv, use_container_width=True)
+    # Top 10 SKU 영역 (반·반)
+    st.subheader("Top 10 SKU")
+    col_top_demand, col_top_inv = st.columns(2)
+    with col_top_demand:
+        fig_top = px.bar(top, x="sku", y="demand_30d", title="수요 TOP 10 SKU (최근 30일)")
+        fig_top.update_layout(xaxis_title="SKU", yaxis_title="수요량 (최근 30일)")
+        fig_top.update_traces(width=0.5)
+        fig_top = apply_plotly_theme(fig_top)
+        st.plotly_chart(fig_top, use_container_width=True)
+    with col_top_inv:
+        fig_top_inv = px.bar(top_inv, x="sku", y="onhand_30d", title="재고 TOP 10 SKU (최근 30일)")
+        fig_top_inv.update_layout(xaxis_title="SKU", yaxis_title="재고 수량 (최근 30일 합계)")
+        fig_top_inv.update_traces(width=0.5)
+        fig_top_inv = apply_plotly_theme(fig_top_inv)
+        st.plotly_chart(fig_top_inv, use_container_width=True)
 
 with tab_risk:
     st.subheader("⚠️ 재고 리스크 목록")
