@@ -152,6 +152,26 @@ ORDER BY d.date
 """
 trend = con.execute(trend_sql).fetchdf()
 
+# --- Inventory trend (Last 60 Days) ---
+inv_trend_sql = f"""
+WITH base_sku AS (
+  SELECT m.sku
+  FROM sku_master m
+  WHERE 1=1
+    {"AND m.category = '"+cat+"'" if cat!="ALL" else ""}
+    {"AND m.sku = '"+sku_pick+"'" if sku_pick!="ALL" else ""}
+    {"AND EXISTS (SELECT 1 FROM inventory_daily i WHERE i.sku = m.sku AND i.warehouse = '"+wh+"')" if wh!="ALL" else ""}
+)
+SELECT i.date, SUM(i.onhand_qty) AS onhand_qty
+FROM inventory_daily i
+JOIN base_sku b ON i.sku = b.sku
+WHERE i.date >= '{latest_date}'::DATE - INTERVAL 60 DAY
+  {"AND i.warehouse = '"+wh+"'" if wh!="ALL" else ""}
+GROUP BY i.date
+ORDER BY i.date
+"""
+inv_trend = con.execute(inv_trend_sql).fetchdf()
+
 # --- Top SKUs by demand (Last 30 Days) ---
 top_sql = f"""
 WITH base_sku AS (
@@ -305,6 +325,13 @@ with tab_summary:
     fig_trend.update_xaxes(tickformat="%Y-%m-%d")
     fig_trend = apply_plotly_theme(fig_trend)
     st.plotly_chart(fig_trend, use_container_width=True)
+
+    # Inventory trend
+    fig_inv_trend = px.line(inv_trend, x="date", y="onhand_qty", title="재고 추이 (최근 60일)")
+    fig_inv_trend.update_layout(xaxis_title="날짜", yaxis_title="재고 수량")
+    fig_inv_trend.update_xaxes(tickformat="%Y-%m-%d")
+    fig_inv_trend = apply_plotly_theme(fig_inv_trend)
+    st.plotly_chart(fig_inv_trend, use_container_width=True)
 
     # Top 10 SKUs
     fig_top = px.bar(top, x="sku", y="demand_30d", title="수요 TOP 10 SKU (최근 30일)")
