@@ -208,6 +208,26 @@ LIMIT 10
 """
 top = con.execute(top_sql).fetchdf()
 
+# --- Top SKUs by inventory (Last 30 Days) ---
+top_inv_sql = f"""
+WITH base_sku AS (
+  SELECT m.sku
+  FROM sku_master m
+  WHERE 1=1
+    {"AND m.category = '"+cat+"'" if cat!="ALL" else ""}
+    {"AND EXISTS (SELECT 1 FROM inventory_daily i WHERE i.sku = m.sku AND i.warehouse = '"+wh+"')" if wh!="ALL" else ""}
+)
+SELECT i.sku, SUM(i.onhand_qty) AS onhand_30d
+FROM inventory_daily i
+JOIN base_sku b ON i.sku = b.sku
+WHERE i.date >= '{latest_date}'::DATE - INTERVAL 30 DAY AND i.date <= '{latest_date}'
+  {"AND i.warehouse = '"+wh+"'" if wh!="ALL" else ""}
+GROUP BY i.sku
+ORDER BY onhand_30d DESC
+LIMIT 10
+"""
+top_inv = con.execute(top_inv_sql).fetchdf()
+
 # --- Stockout Risk Table (Risk Tab) ---
 risk_sql = f"""
 WITH base_sku AS (
@@ -333,10 +353,9 @@ with tab_summary:
 
     col1.metric("총 재고 수량", f"{total_onhand:,}")
     col2.metric("최근 7일 재고 수량", f"{inv_7d_avg:,}")
-    col3.metric("최근 7일 수요", f"{total_demand_7d:,}")
+    col3.metric("최근 7일 수요량", f"{total_demand_7d:,}")
     col4.metric("최근 30일 평균 재고", f"{avg_onhand_30d:,.1f}")
     col5.metric("품절 위험 SKU수 (7일 이내)", stockout_cnt)
-    st.caption("최근 30일 평균 재고 = 최근 30일 동안 일별 총 재고 수량의 평균 (필터: 카테고리·SKU·창고 적용)")
 
 
     # Demand trend
@@ -353,12 +372,19 @@ with tab_summary:
     fig_inv_trend = apply_plotly_theme(fig_inv_trend)
     st.plotly_chart(fig_inv_trend, use_container_width=True)
 
-    # Top 10 SKUs
+    # Top 10 SKUs - Demand
     fig_top = px.bar(top, x="sku", y="demand_30d", title="수요 TOP 10 SKU (최근 30일)")
     fig_top.update_layout(xaxis_title="SKU", yaxis_title="수요량 (최근 30일)")
     fig_top.update_traces(width=0.5)
     fig_top = apply_plotly_theme(fig_top)
     st.plotly_chart(fig_top, use_container_width=True)
+
+    # Top 10 SKUs - Inventory
+    fig_top_inv = px.bar(top_inv, x="sku", y="onhand_30d", title="재고 TOP 10 SKU (최근 30일)")
+    fig_top_inv.update_layout(xaxis_title="SKU", yaxis_title="재고 수량 (최근 30일 합계)")
+    fig_top_inv.update_traces(width=0.5)
+    fig_top_inv = apply_plotly_theme(fig_top_inv)
+    st.plotly_chart(fig_top_inv, use_container_width=True)
 
 with tab_risk:
     st.subheader("⚠️ 재고 리스크 목록")
