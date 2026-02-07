@@ -47,11 +47,13 @@ category_map = {
 }
 
 warehouse_map = {
+  "ALL" : "전체",
   "WH-1": "창고 1",
   "WH-2": "창고 2",
 }
 
 plant_map = {
+  "ALL": "전체",
   "PLANT-A": "공장 A",
   "PLANT-B": "공장 B",
 }
