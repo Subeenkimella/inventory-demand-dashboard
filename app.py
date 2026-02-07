@@ -5,6 +5,18 @@ import plotly.express as px
 
 st.set_page_config(page_title="재고·수요 모니터링 대시보드", layout="wide")
 
+def apply_plotly_theme(fig):
+    fig.update_layout(
+        template="plotly_white",
+        font=dict(size=13),
+        title_font=dict(size=16),
+        legend_font=dict(size=12),
+        xaxis=dict(showgrid=True, gridcolor="#e5e5e5"),
+        yaxis=dict(showgrid=True, gridcolor="#e5e5e5"),
+        margin=dict(l=40, r=20, t=60, b=40),
+    )
+    return fig
+
 @st.cache_data
 def load_data():
     sku = pd.read_csv("sku_master.csv")
@@ -241,11 +253,13 @@ with tab_summary:
     fig_trend = px.line(trend, x="date", y="demand_qty", title="수요 추이 (최근 60일)")
     fig_trend.update_layout(xaxis_title="날짜", yaxis_title="수요량")
     fig_trend.update_xaxes(tickformat="%Y-%m-%d")
+    fig_trend = apply_plotly_theme(fig_trend)
     st.plotly_chart(fig_trend, use_container_width=True)
 
     # Top 10 SKUs
     fig_top = px.bar(top, x="sku", y="demand_30d", title="수요 TOP 10 SKU (최근 30일)")
     fig_top.update_layout(xaxis_title="SKU", yaxis_title="수요량 (최근 30일)")
+    fig_top = apply_plotly_theme(fig_top)
     st.plotly_chart(fig_top, use_container_width=True)
 
 with tab_risk:
