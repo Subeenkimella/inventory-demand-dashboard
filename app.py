@@ -383,14 +383,14 @@ with tab_summary:
     fig_top = apply_plotly_theme(fig_top)
     st.plotly_chart(fig_top, use_container_width=True)
 
-    # Top 10 SKUs - Inventory
+with tab_risk:
+    # 재고 TOP 10 SKU (맨 상단)
     fig_top_inv = px.bar(top_inv, x="sku", y="onhand_30d", title="재고 TOP 10 SKU (최근 30일)")
     fig_top_inv.update_layout(xaxis_title="SKU", yaxis_title="재고 수량 (최근 30일 합계)")
     fig_top_inv.update_traces(width=0.5)
     fig_top_inv = apply_plotly_theme(fig_top_inv)
     st.plotly_chart(fig_top_inv, use_container_width=True)
 
-with tab_risk:
     st.subheader("⚠️ 재고 리스크 목록")
     col_left, col_filter = st.columns([2, 1])
     with col_filter:
