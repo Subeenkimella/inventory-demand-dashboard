@@ -1,3 +1,7 @@
+st.warning("DEPLOY CHECK: app.py undated")
+
+
+
 import streamlit as st
 import pandas as pd
 import duckdb
@@ -254,13 +258,6 @@ with tab_risk:
     st.dataframe(risk, use_container_width=True)
 
 with tab_reorder:
-    st.subheader("🔄 발주 제안 목록")
+    st.subheader("🔄 발주 필요 목록")
     st.caption("추천 발주 수량 = max(재주문 기준 - 현재 재고, 0)")
     st.dataframe(reorder_suggest, use_container_width=True)
-
-with st.expander("SQL 코드 보기"):
-    st.code(kpi_sql, language="sql")
-    st.code(trend_sql, language="sql")
-    st.code(top_sql, language="sql")
-    st.code(risk_sql, language="sql")
-    st.code(reorder_sql, language="sql")
