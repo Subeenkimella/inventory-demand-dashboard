@@ -68,13 +68,13 @@ cat = st.sidebar.selectbox(
 
 wh = st.sidebar.selectbox(
     "창고",
-    options=["ALL"] + sorted(sku["category"].unique()),
+    options=["ALL"] + sorted(sku["warehouse"].unique()),
     format_func=lambda x: category_map.get(x, x)
 )
 
 sku_pick = st.sidebar.selectbox(
     "SKU",
-    options=["ALL"] + sorted(sku["category"].unique()),
+    options=["ALL"] + sorted(sku["sku"].unique()),
     format_func=lambda x: category_map.get(x, x)
 )
 
