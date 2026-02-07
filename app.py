@@ -259,7 +259,7 @@ with tab_summary:
     # Top 10 SKUs
     fig_top = px.bar(top, x="sku", y="demand_30d", title="수요 TOP 10 SKU (최근 30일)")
     fig_top.update_layout(xaxis_title="SKU", yaxis_title="수요량 (최근 30일)")
-    fig_top.update_traces(width=0.4)
+    fig_top.update_traces(width=0.5)
     fig_top = apply_plotly_theme(fig_top)
     st.plotly_chart(fig_top, use_container_width=True)
 
