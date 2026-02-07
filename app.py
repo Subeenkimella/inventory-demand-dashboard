@@ -362,19 +362,20 @@ with tab_summary:
     col5.metric("품절 위험 SKU수 (7일 이내)", stockout_cnt)
 
 
-    # Demand trend
-    fig_trend = px.line(trend, x="date", y="demand_qty", title="수요 추이 (최근 60일)")
-    fig_trend.update_layout(xaxis_title="일자", yaxis_title="수요량")
-    fig_trend.update_xaxes(tickformat="%Y-%m-%d")
-    fig_trend = apply_plotly_theme(fig_trend)
-    st.plotly_chart(fig_trend, use_container_width=True)
-
-    # Inventory trend
-    fig_inv_trend = px.line(inv_trend, x="date", y="onhand_qty", title="재고 추이 (최근 60일)")
-    fig_inv_trend.update_layout(xaxis_title="일자", yaxis_title="재고 수량")
-    fig_inv_trend.update_xaxes(tickformat="%Y-%m-%d")
-    fig_inv_trend = apply_plotly_theme(fig_inv_trend)
-    st.plotly_chart(fig_inv_trend, use_container_width=True)
+    # 수요 추이 / 재고 추이 (반·반)
+    col_trend_demand, col_trend_inv = st.columns(2)
+    with col_trend_demand:
+        fig_trend = px.line(trend, x="date", y="demand_qty", title="수요 추이 (최근 60일)")
+        fig_trend.update_layout(xaxis_title="일자", yaxis_title="수요량")
+        fig_trend.update_xaxes(tickformat="%Y-%m-%d")
+        fig_trend = apply_plotly_theme(fig_trend)
+        st.plotly_chart(fig_trend, use_container_width=True)
+    with col_trend_inv:
+        fig_inv_trend = px.line(inv_trend, x="date", y="onhand_qty", title="재고 추이 (최근 60일)")
+        fig_inv_trend.update_layout(xaxis_title="일자", yaxis_title="재고 수량")
+        fig_inv_trend.update_xaxes(tickformat="%Y-%m-%d")
+        fig_inv_trend = apply_plotly_theme(fig_inv_trend)
+        st.plotly_chart(fig_inv_trend, use_container_width=True)
 
     # Top 10 SKUs - Demand
     fig_top = px.bar(top, x="sku", y="demand_30d", title="수요 TOP 10 SKU (최근 30일)")
