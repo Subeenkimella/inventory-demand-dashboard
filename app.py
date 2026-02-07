@@ -302,12 +302,14 @@ with tab_summary:
 
 with tab_risk:
     st.subheader("⚠️ 재고 리스크 목록")
-    risk_period = st.selectbox(
-        "재고 소진 기준(일수)",
-        options=[7, 14, 21, 30, 60],
-        format_func=lambda x: f"{x}일 이내",
-        key="risk_period",
-    )
+    col_left, col_filter = st.columns([2, 1])
+    with col_filter:
+        risk_period = st.selectbox(
+            "재고 소진 기준(일수)",
+            options=[7, 14, 21, 30, 60],
+            format_func=lambda x: f"{x}일 이내",
+            key="risk_period",
+        )
     risk_filtered = risk[
         (risk["coverage_days"].notna()) & (risk["coverage_days"] < risk_period)
     ].copy()
