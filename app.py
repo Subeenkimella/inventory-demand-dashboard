@@ -87,13 +87,12 @@ if "risk_threshold_days" not in st.session_state:
 if "overstock_threshold_days" not in st.session_state:
     st.session_state.overstock_threshold_days = 60
 
-# 공통 필터 UI — 본문 상단(헤더 영역), st.columns
-st.subheader("공통 필터")
+# 공통 필터 UI — 본문 상단(헤더 영역), 6개 한 줄
 cat_opts = ["ALL"] + sorted(sku["category"].unique())
 wh_opts = ["ALL"] + sorted(inv["warehouse"].unique())
 sku_opts = ["ALL"] + sorted(sku["sku"].unique())
 
-col_cat, col_wh, col_sku, col_range = st.columns(4)
+col_cat, col_wh, col_sku, col_range, col_risk, col_over = st.columns(6)
 with col_cat:
     st.selectbox(
         "카테고리",
@@ -120,17 +119,15 @@ with col_sku:
     )
 with col_range:
     st.selectbox(
-        "분석 기간(일)",
+        "기간(일)",
         options=[7, 14, 30, 60, 90],
         index=[7, 14, 30, 60, 90].index(st.session_state.range_days) if st.session_state.range_days in [7, 14, 30, 60, 90] else 3,
         format_func=lambda x: f"{x}일",
         key="range_days",
     )
-
-col_risk, col_over, _, _ = st.columns(4)
 with col_risk:
     st.selectbox(
-        "품절 리스크 기준(일)",
+        "품절기준(일)",
         options=[7, 14, 21, 30, 60],
         index=[7, 14, 21, 30, 60].index(st.session_state.risk_threshold_days) if st.session_state.risk_threshold_days in [7, 14, 21, 30, 60] else 1,
         format_func=lambda x: f"{x}일 미만",
@@ -138,7 +135,7 @@ with col_risk:
     )
 with col_over:
     st.selectbox(
-        "과잉재고 기준(일)",
+        "과잉기준(일)",
         options=[30, 60, 90, 120],
         index=[30, 60, 90, 120].index(st.session_state.overstock_threshold_days) if st.session_state.overstock_threshold_days in [30, 60, 90, 120] else 1,
         format_func=lambda x: f"{x}일 초과",
