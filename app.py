@@ -334,7 +334,13 @@ latest_inv AS (
 avg_daily_demand AS (
   SELECT sku, AVG(demand_qty) AS avg_daily_demand_14d
   FROM demand_daily
-  WHERE date > '{latest_date}'::DATE - INTERVAL 14 DAY
+  WHERE date > '{latest_date}'::DATE - INTERVAL 14 DAY AND date <= '{latest_date}'
+  GROUP BY sku
+),
+demand_7d_cte AS (
+  SELECT sku, SUM(demand_qty) AS demand_7d
+  FROM demand_daily
+  WHERE date > '{latest_date}'::DATE - INTERVAL 7 DAY AND date <= '{latest_date}'
   GROUP BY sku
 ),
 base AS (
@@ -343,6 +349,7 @@ base AS (
     li.warehouse,
     COALESCE(li.onhand_qty, 0) AS onhand_qty,
     COALESCE(ad.avg_daily_demand_14d, 0) AS avg_daily_demand_14d,
+    COALESCE(d7.demand_7d, 0) AS demand_7d,
     CASE
       WHEN COALESCE(ad.avg_daily_demand_14d, 0) = 0 THEN NULL
       ELSE ROUND(COALESCE(li.onhand_qty,0) / ad.avg_daily_demand_14d, 1)
@@ -350,8 +357,15 @@ base AS (
   FROM base_sku b
   LEFT JOIN latest_inv li ON b.sku = li.sku
   LEFT JOIN avg_daily_demand ad ON b.sku = ad.sku
+  LEFT JOIN demand_7d_cte d7 ON b.sku = d7.sku
 )
-SELECT *
+SELECT
+  sku, sku_name, category, warehouse,
+  onhand_qty, avg_daily_demand_14d, demand_7d, coverage_days,
+  CASE
+    WHEN coverage_days IS NOT NULL THEN date_add('{latest_date}'::DATE, CAST(CEIL(coverage_days) AS INTEGER))
+    ELSE NULL
+  END AS estimated_stockout_date
 FROM base
 ORDER BY coverage_days ASC NULLS LAST
 """
@@ -612,27 +626,55 @@ with tab_health:
     st.dataframe(display_health, use_container_width=True)
 
 with tab_stockout:
-    st.subheader("⚠️ 재고 리스크 목록")
-    col_left, col_filter = st.columns([2, 1])
-    with col_filter:
-        risk_period = st.selectbox(
-            "재고 소진 기준(일수)",
-            options=[7, 14, 21, 30, 60],
-            format_func=lambda x: f"{x}일 이내",
-            key="risk_period",
-        )
-        risk_level = st.selectbox(
-            "Risk Level",
-            options=["전체", "Critical", "High", "Medium", "Low"],
-            key="risk_level",
-        )
+    st.subheader("⚠️ Stockout Risk")
+    st.caption("DOS(재고 소진 예상일수) = 현재 재고 / 최근 14일 평균 일수요 | Risk Level: Critical 0~3일, High 3~7일, Medium 7~14일, Low 14일 이상")
+
+    risk_period_options = [7, 14, 21, 30, 60]
+    risk_period_default_idx = risk_period_options.index(risk_threshold_days) if risk_threshold_days in risk_period_options else 1
+    risk_period_days = st.selectbox(
+        "재고 소진 기준(일수)",
+        options=risk_period_options,
+        index=risk_period_default_idx,
+        format_func=lambda x: f"{x}일 미만",
+        key="risk_period_days",
+    )
+    risk_level_filter = st.selectbox(
+        "Risk Level",
+        options=["전체", "Critical", "High", "Medium", "Low"],
+        key="risk_level_filter",
+    )
+
     risk_filtered = risk[
-        (risk["coverage_days"].notna()) & (risk["coverage_days"] < risk_period)
+        (risk["coverage_days"].notna()) & (risk["coverage_days"] < risk_period_days)
     ].copy()
-    if risk_level != "전체":
-        risk_filtered = risk_filtered[risk_filtered["risk_level"] == risk_level]
-    st.caption("커버리지 일수 = 현재 재고 / 최근 14일 평균 일수요 | Risk Level: Critical 0~3일, High 3~7일, Medium 7~14일, Low 14일 이상")
-    st.dataframe(risk_filtered, use_container_width=True)
+    if risk_level_filter != "전체":
+        risk_filtered = risk_filtered[risk_filtered["risk_level"] == risk_level_filter]
+
+    # 상단 KPI: Critical/High/Medium/Low SKU 수, 리스크 재고 수량 합, 예상 소진일 Top10 평균
+    cnt_critical = int((risk_filtered["risk_level"] == "Critical").sum())
+    cnt_high = int((risk_filtered["risk_level"] == "High").sum())
+    cnt_medium = int((risk_filtered["risk_level"] == "Medium").sum())
+    cnt_low = int((risk_filtered["risk_level"] == "Low").sum())
+    risk_onhand_sum = int(risk_filtered["onhand_qty"].sum()) if not risk_filtered.empty else 0
+    top10_coverage = risk_filtered.nsmallest(10, "coverage_days")["coverage_days"]
+    avg_top10 = float(top10_coverage.mean()) if len(top10_coverage) > 0 else None
+
+    col_c, col_h, col_m, col_l, col_sum, col_avg = st.columns(6)
+    col_c.metric("Critical SKU 수", f"{cnt_critical:,}")
+    col_h.metric("High SKU 수", f"{cnt_high:,}")
+    col_m.metric("Medium SKU 수", f"{cnt_medium:,}")
+    col_l.metric("Low SKU 수", f"{cnt_low:,}")
+    col_sum.metric("리스크 재고 수량 합", f"{risk_onhand_sum:,}")
+    col_avg.metric("예상 소진일 Top10 평균(일)", f"{avg_top10:,.1f}" if avg_top10 is not None else "—")
+
+    # 리스크 테이블: coverage_days NOT NULL AND coverage_days < risk_period_days, risk_level 적용
+    st.subheader("리스크 테이블")
+    display_risk = risk_filtered[
+        ["sku", "sku_name", "category", "warehouse", "onhand_qty", "avg_daily_demand_14d", "coverage_days", "estimated_stockout_date", "demand_7d", "risk_level"]
+    ].copy()
+    display_risk = display_risk.sort_values("coverage_days", ascending=True)
+    st.dataframe(display_risk, use_container_width=True)
+    st.caption("DOS(재고 소진 예상일수) 기준 리스크 구간만 표시. estimated_stockout_date = 기준일 + CEIL(DOS)일.")
 
 with tab_actions:
     st.subheader("🔄 발주 필요 목록")
