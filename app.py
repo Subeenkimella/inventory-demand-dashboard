@@ -45,6 +45,20 @@ if inv_txn is not None and len(inv_txn) > 0:
 st.markdown("""
 <style>
     h1 { font-size: 2.08rem !important; }
+    /* 공통 필터 스크롤 시 상단 고정 */
+    #sticky-filter-anchor { height: 0; margin: 0; padding: 0; overflow: hidden; }
+    .block-container > div:has(#sticky-filter-anchor) + div,
+    div[data-testid="stVerticalBlock"]:has(#sticky-filter-anchor) + div,
+    div[data-testid="stVerticalBlock"]:has(#sticky-filter-anchor) + div[data-testid="stHorizontalBlock"] {
+        position: sticky;
+        top: 0;
+        z-index: 999;
+        background: white;
+        padding: 6px 0 8px 0;
+        margin-bottom: 8px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        border-radius: 4px;
+    }
 </style>
 """, unsafe_allow_html=True)
 st.title("📦 재고·수요 모니터링 대시보드")
@@ -87,7 +101,8 @@ if "risk_threshold_days" not in st.session_state:
 if "overstock_threshold_days" not in st.session_state:
     st.session_state.overstock_threshold_days = 60
 
-# 공통 필터 UI — 본문 상단(헤더 영역), 6개 한 줄
+# 공통 필터 UI — 본문 상단(헤더 영역), 6개 한 줄, 스크롤 시 고정
+st.markdown('<div id="sticky-filter-anchor"></div>', unsafe_allow_html=True)
 cat_opts = ["ALL"] + sorted(sku["category"].unique())
 wh_opts = ["ALL"] + sorted(inv["warehouse"].unique())
 sku_opts = ["ALL"] + sorted(sku["sku"].unique())
