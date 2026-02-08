@@ -422,27 +422,57 @@ with tab_summary:
         fig_inv_trend = apply_plotly_theme(fig_inv_trend)
         st.plotly_chart(fig_inv_trend, use_container_width=True)
 
-    # 입고(IN) / 출고(OUT) 추이 (inventory_txn)
-    if txn_in_trend is None or len(txn_in_trend) == 0:
-        st.warning("선택한 필터 기준으로 60일 내 재고 변동(입/출고) 데이터가 없습니다.")
+# --- IN/OUT trend (inventory_txn, last 60 days, filter by cat/wh/sku_pick) ---
+txn_in_trend = None
+txn_out_trend = None
+
+if inv_txn is not None and len(inv_txn) > 0:
+    txn_trend_sql = f"""
+    WITH filtered AS (
+      SELECT
+        CAST(COALESCE(t.date, CAST(t.txn_datetime AS DATE)) AS DATE) AS dt,
+        UPPER(TRIM(CAST(t.txn_type AS VARCHAR))) AS txn_type_norm,
+        TRY_CAST(t.qty AS DOUBLE) AS qty,
+        t.sku,
+        t.warehouse
+      FROM inventory_txn t
+      WHERE CAST(COALESCE(t.date, CAST(t.txn_datetime AS DATE)) AS DATE)
+            BETWEEN '{latest_date}'::DATE - INTERVAL 60 DAY AND '{latest_date}'::DATE
+        {"AND t.warehouse = '"+wh+"'" if wh!="ALL" else ""}
+        {"AND t.sku = '"+sku_pick+"'" if sku_pick!="ALL" else ""}
+        {"AND EXISTS (SELECT 1 FROM sku_master m WHERE m.sku = t.sku AND m.category = '"+cat+"')" if cat!="ALL" else ""}
+    )
+    SELECT
+      dt AS date,
+      SUM(
+        CASE
+          WHEN txn_type_norm IN ('IN', 'RETURN') THEN ABS(COALESCE(qty, 0))
+          WHEN txn_type_norm = 'ADJUST' AND COALESCE(qty, 0) > 0 THEN COALESCE(qty, 0)
+          ELSE 0
+        END
+      ) AS in_qty,
+      SUM(
+        CASE
+          WHEN txn_type_norm IN ('OUT', 'SCRAP') THEN ABS(COALESCE(qty, 0))
+          WHEN txn_type_norm = 'ADJUST' AND COALESCE(qty, 0) < 0 THEN ABS(COALESCE(qty, 0))
+          ELSE 0
+        END
+      ) AS out_qty
+    FROM filtered
+    GROUP BY dt
+    ORDER BY dt
+    """
+
+    txn_trend = con.execute(txn_trend_sql).fetchdf()
+
+    # 값이 전부 0이면 차트 대신 안내 문구
+    if txn_trend.empty or ((txn_trend["in_qty"].fillna(0).sum() == 0) and (txn_trend["out_qty"].fillna(0).sum() == 0)):
+        txn_in_trend = None
+        txn_out_trend = None
     else:
-        n_bars = max(len(txn_in_trend), 1)
-        bar_width = min(0.6, max(0.2, 10 / n_bars))
-        col_in, col_out = st.columns(2)
-        with col_in:
-            fig_in = px.bar(txn_in_trend, x="date", y="qty", title="입고(IN) 추이 (최근 60일)")
-            fig_in.update_layout(xaxis_title="일자", yaxis_title="입고 수량")
-            fig_in.update_xaxes(tickformat="%Y-%m-%d")
-            fig_in.update_traces(width=bar_width)
-            fig_in = apply_plotly_theme(fig_in)
-            st.plotly_chart(fig_in, use_container_width=True)
-        with col_out:
-            fig_out = px.bar(txn_out_trend, x="date", y="qty", title="출고(OUT) 추이 (최근 60일)")
-            fig_out.update_layout(xaxis_title="일자", yaxis_title="출고 수량")
-            fig_out.update_xaxes(tickformat="%Y-%m-%d")
-            fig_out.update_traces(width=bar_width)
-            fig_out = apply_plotly_theme(fig_out)
-            st.plotly_chart(fig_out, use_container_width=True)
+        txn_in_trend = txn_trend[["date", "in_qty"]].rename(columns={"in_qty": "qty"})
+        txn_out_trend = txn_trend[["date", "out_qty"]].rename(columns={"out_qty": "qty"})
+
 
     # Top 10 SKUs - Demand
     fig_top = px.bar(top, x="sku", y="demand_30d", title="수요 TOP 10 SKU (최근 30일)")
