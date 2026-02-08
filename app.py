@@ -241,18 +241,36 @@ top_inv = con.execute(top_inv_sql).fetchdf()
 # --- IN/OUT trend (inventory_txn, last 60 days, filter by cat/wh/sku_pick) ---
 txn_in_trend = None
 txn_out_trend = None
+
 if inv_txn is not None and len(inv_txn) > 0:
     txn_trend_sql = f"""
     WITH filtered AS (
-      SELECT t.date, t.txn_type, t.qty
+      SELECT
+        t.date,
+        UPPER(TRIM(t.txn_type)) AS txn_type,
+        t.qty
       FROM inventory_txn t
       WHERE t.date >= '{latest_date}'::DATE - INTERVAL 60 DAY AND t.date <= '{latest_date}'
         {"AND t.warehouse = '"+wh+"'" if wh!="ALL" else ""}
         {"AND t.sku = '"+sku_pick+"'" if sku_pick!="ALL" else ""}
         {"AND EXISTS (SELECT 1 FROM sku_master m WHERE m.sku = t.sku AND m.category = '"+cat+"')" if cat!="ALL" else ""}
     )
-    SELECT date, SUM(CASE WHEN txn_type = 'IN' THEN qty ELSE 0 END) AS in_qty,
-           SUM(CASE WHEN txn_type = 'OUT' THEN ABS(qty) ELSE 0 END) AS out_qty
+    SELECT
+      date,
+      SUM(
+        CASE
+          WHEN txn_type IN ('IN','INBOUND','RECEIPT','RCV','GR') THEN qty
+          WHEN txn_type IN ('입고','입하') THEN qty
+          ELSE 0
+        END
+      ) AS in_qty,
+      SUM(
+        CASE
+          WHEN txn_type IN ('OUT','OUTBOUND','ISSUE','SHIP','GI') THEN ABS(qty)
+          WHEN txn_type IN ('출고','출하') THEN ABS(qty)
+          ELSE 0
+        END
+      ) AS out_qty
     FROM filtered
     GROUP BY date
     ORDER BY date
