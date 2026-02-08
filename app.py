@@ -45,20 +45,6 @@ if inv_txn is not None and len(inv_txn) > 0:
 st.markdown("""
 <style>
     h1 { font-size: 2.08rem !important; }
-    /* 공통 필터 스크롤 시 상단 고정 */
-    #sticky-filter-anchor { height: 0; margin: 0; padding: 0; overflow: hidden; }
-    .block-container > div:has(#sticky-filter-anchor) + div,
-    div[data-testid="stVerticalBlock"]:has(#sticky-filter-anchor) + div,
-    div[data-testid="stVerticalBlock"]:has(#sticky-filter-anchor) + div[data-testid="stHorizontalBlock"] {
-        position: sticky;
-        top: 0;
-        z-index: 999;
-        background: white;
-        padding: 6px 0 8px 0;
-        margin-bottom: 8px;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-        border-radius: 4px;
-    }
 </style>
 """, unsafe_allow_html=True)
 st.title("📦 재고·수요 모니터링 대시보드")
@@ -101,61 +87,54 @@ if "risk_threshold_days" not in st.session_state:
 if "overstock_threshold_days" not in st.session_state:
     st.session_state.overstock_threshold_days = 60
 
-# 공통 필터 UI — 본문 상단(헤더 영역), 6개 한 줄, 스크롤 시 고정
-st.markdown('<div id="sticky-filter-anchor"></div>', unsafe_allow_html=True)
+# 공통 필터 UI — 왼쪽 사이드바 (모든 탭 공통, session_state 사용)
+st.sidebar.header("공통 필터")
 cat_opts = ["ALL"] + sorted(sku["category"].unique())
 wh_opts = ["ALL"] + sorted(inv["warehouse"].unique())
 sku_opts = ["ALL"] + sorted(sku["sku"].unique())
 
-col_cat, col_wh, col_sku, col_range, col_risk, col_over = st.columns(6)
-with col_cat:
-    st.selectbox(
-        "카테고리",
-        options=cat_opts,
-        index=cat_opts.index(st.session_state.cat) if st.session_state.cat in cat_opts else 0,
-        format_func=lambda x: category_map.get(x, x),
-        key="cat",
-    )
-with col_wh:
-    st.selectbox(
-        "창고",
-        options=wh_opts,
-        index=wh_opts.index(st.session_state.wh) if st.session_state.wh in wh_opts else 0,
-        format_func=lambda x: warehouse_map.get(x, x),
-        key="wh",
-    )
-with col_sku:
-    st.selectbox(
-        "SKU",
-        options=sku_opts,
-        index=sku_opts.index(st.session_state.sku_pick) if st.session_state.sku_pick in sku_opts else 0,
-        format_func=lambda x: "전체" if x == "ALL" else x,
-        key="sku_pick",
-    )
-with col_range:
-    st.selectbox(
-        "기간(일)",
-        options=[7, 14, 30, 60, 90],
-        index=[7, 14, 30, 60, 90].index(st.session_state.range_days) if st.session_state.range_days in [7, 14, 30, 60, 90] else 3,
-        format_func=lambda x: f"{x}일",
-        key="range_days",
-    )
-with col_risk:
-    st.selectbox(
-        "품절기준(일)",
-        options=[7, 14, 21, 30, 60],
-        index=[7, 14, 21, 30, 60].index(st.session_state.risk_threshold_days) if st.session_state.risk_threshold_days in [7, 14, 21, 30, 60] else 1,
-        format_func=lambda x: f"{x}일 미만",
-        key="risk_threshold_days",
-    )
-with col_over:
-    st.selectbox(
-        "과잉기준(일)",
-        options=[30, 60, 90, 120],
-        index=[30, 60, 90, 120].index(st.session_state.overstock_threshold_days) if st.session_state.overstock_threshold_days in [30, 60, 90, 120] else 1,
-        format_func=lambda x: f"{x}일 초과",
-        key="overstock_threshold_days",
-    )
+st.sidebar.selectbox(
+    "카테고리",
+    options=cat_opts,
+    index=cat_opts.index(st.session_state.cat) if st.session_state.cat in cat_opts else 0,
+    format_func=lambda x: category_map.get(x, x),
+    key="cat",
+)
+st.sidebar.selectbox(
+    "창고",
+    options=wh_opts,
+    index=wh_opts.index(st.session_state.wh) if st.session_state.wh in wh_opts else 0,
+    format_func=lambda x: warehouse_map.get(x, x),
+    key="wh",
+)
+st.sidebar.selectbox(
+    "SKU",
+    options=sku_opts,
+    index=sku_opts.index(st.session_state.sku_pick) if st.session_state.sku_pick in sku_opts else 0,
+    format_func=lambda x: "전체" if x == "ALL" else x,
+    key="sku_pick",
+)
+st.sidebar.selectbox(
+    "기간(일)",
+    options=[7, 14, 30, 60, 90],
+    index=[7, 14, 30, 60, 90].index(st.session_state.range_days) if st.session_state.range_days in [7, 14, 30, 60, 90] else 3,
+    format_func=lambda x: f"{x}일",
+    key="range_days",
+)
+st.sidebar.selectbox(
+    "품절기준(일)",
+    options=[7, 14, 21, 30, 60],
+    index=[7, 14, 21, 30, 60].index(st.session_state.risk_threshold_days) if st.session_state.risk_threshold_days in [7, 14, 21, 30, 60] else 1,
+    format_func=lambda x: f"{x}일 미만",
+    key="risk_threshold_days",
+)
+st.sidebar.selectbox(
+    "과잉기준(일)",
+    options=[30, 60, 90, 120],
+    index=[30, 60, 90, 120].index(st.session_state.overstock_threshold_days) if st.session_state.overstock_threshold_days in [30, 60, 90, 120] else 1,
+    format_func=lambda x: f"{x}일 초과",
+    key="overstock_threshold_days",
+)
 
 cat = st.session_state.cat
 wh = st.session_state.wh
