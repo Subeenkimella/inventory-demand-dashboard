@@ -552,23 +552,24 @@ with tab_exec:
         fig_inv_trend = apply_plotly_theme(fig_inv_trend)
         st.plotly_chart(fig_inv_trend, use_container_width=True)
 
-    col_cat_inv, col_cat_demand = st.columns(2)
-    with col_cat_inv:
-        if not cat_inv.empty and cat_inv["onhand_qty"].sum() > 0:
-            fig_cat_inv = px.pie(cat_inv, values="onhand_qty", names="category", title="카테고리별 재고 비중 (latest 기준)")
-            fig_cat_inv.update_traces(textinfo="percent+label")
-            fig_cat_inv = apply_plotly_theme(fig_cat_inv)
-            st.plotly_chart(fig_cat_inv, use_container_width=True)
-        else:
-            st.caption("카테고리별 재고 비중: 데이터 없음")
-    with col_cat_demand:
-        if not cat_demand.empty and cat_demand["demand_qty"].sum() > 0:
-            fig_cat_demand = px.pie(cat_demand, values="demand_qty", names="category", title="카테고리별 수요 비중 (최근 30일)")
-            fig_cat_demand.update_traces(textinfo="percent+label")
-            fig_cat_demand = apply_plotly_theme(fig_cat_demand)
-            st.plotly_chart(fig_cat_demand, use_container_width=True)
-        else:
-            st.caption("카테고리별 수요 비중: 데이터 없음")
+    if not cat_inv.empty and cat_inv["onhand_qty"].sum() > 0:
+        cat_inv_display = cat_inv.copy()
+        cat_inv_display["category_ko"] = cat_inv_display["category"].map(lambda x: category_map.get(x, x))
+        fig_cat_inv = px.bar(
+            cat_inv_display,
+            x="onhand_qty",
+            y="category_ko",
+            orientation="h",
+            title="카테고리별 재고 비중 (latest 기준)",
+            labels={"onhand_qty": "재고 수량", "category_ko": "카테고리"},
+        )
+        fig_cat_inv.update_layout(yaxis={"categoryorder": "total ascending"})
+        fig_cat_inv.update_xaxes(tickformat=",.0f")
+        fig_cat_inv.update_traces(marker_color=px.colors.qualitative.Pastel)
+        fig_cat_inv = apply_plotly_theme(fig_cat_inv)
+        st.plotly_chart(fig_cat_inv, use_container_width=True)
+    else:
+        st.caption("카테고리별 재고 비중: 데이터 없음")
 
 with tab_health:
     st.subheader("재고 건전성 분석")
