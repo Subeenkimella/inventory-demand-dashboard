@@ -26,15 +26,21 @@ def load_data():
     sku = pd.read_csv("sku_master.csv")
     demand = pd.read_csv("demand_daily.csv", parse_dates=["date"])
     inv = pd.read_csv("inventory_daily.csv", parse_dates=["date"])
-    return sku, demand, inv
+    try:
+        inv_txn = pd.read_csv("inventory_txn.csv", parse_dates=["date", "txn_datetime"])
+    except FileNotFoundError:
+        inv_txn = pd.DataFrame(columns=["txn_datetime", "date", "sku", "warehouse", "txn_type", "qty", "ref_id", "reason_code"])
+    return sku, demand, inv, inv_txn
 
-sku, demand, inv = load_data()
+sku, demand, inv, inv_txn = load_data()
 
 # DuckDB in-memory (SQL engine)
 con = duckdb.connect(database=":memory:")
 con.register("sku_master", sku)
 con.register("demand_daily", demand)
 con.register("inventory_daily", inv)
+if inv_txn is not None and len(inv_txn) > 0:
+    con.register("inventory_txn", inv_txn)
 
 st.markdown("""
 <style>
@@ -232,6 +238,29 @@ LIMIT 10
 """
 top_inv = con.execute(top_inv_sql).fetchdf()
 
+# --- IN/OUT trend (inventory_txn, last 60 days, filter by cat/wh/sku_pick) ---
+txn_in_trend = None
+txn_out_trend = None
+if inv_txn is not None and len(inv_txn) > 0:
+    txn_trend_sql = f"""
+    WITH filtered AS (
+      SELECT t.date, t.txn_type, t.qty
+      FROM inventory_txn t
+      WHERE t.date >= '{latest_date}'::DATE - INTERVAL 60 DAY AND t.date <= '{latest_date}'
+        {"AND t.warehouse = '"+wh+"'" if wh!="ALL" else ""}
+        {"AND t.sku = '"+sku_pick+"'" if sku_pick!="ALL" else ""}
+        {"AND EXISTS (SELECT 1 FROM sku_master m WHERE m.sku = t.sku AND m.category = '"+cat+"')" if cat!="ALL" else ""}
+    )
+    SELECT date, SUM(CASE WHEN txn_type = 'IN' THEN qty ELSE 0 END) AS in_qty,
+           SUM(CASE WHEN txn_type = 'OUT' THEN ABS(qty) ELSE 0 END) AS out_qty
+    FROM filtered
+    GROUP BY date
+    ORDER BY date
+    """
+    txn_trend = con.execute(txn_trend_sql).fetchdf()
+    txn_in_trend = txn_trend[["date", "in_qty"]].rename(columns={"in_qty": "qty"})
+    txn_out_trend = txn_trend[["date", "out_qty"]].rename(columns={"out_qty": "qty"})
+
 # --- Stockout Risk Table (Risk Tab) ---
 risk_sql = f"""
 WITH base_sku AS (
@@ -377,21 +406,41 @@ with tab_summary:
         fig_inv_trend = apply_plotly_theme(fig_inv_trend)
         st.plotly_chart(fig_inv_trend, use_container_width=True)
 
-    # Top 10 SKU 영역 (반·반)
-    st.subheader("Top 10 SKU")
-    col_top_demand, col_top_inv = st.columns(2)
-    with col_top_demand:
-        fig_top = px.bar(top, x="sku", y="demand_30d", title="수요 TOP 10 SKU (최근 30일)")
-        fig_top.update_layout(xaxis_title="SKU", yaxis_title="수요량 (최근 30일)")
-        fig_top.update_traces(width=0.5)
-        fig_top = apply_plotly_theme(fig_top)
-        st.plotly_chart(fig_top, use_container_width=True)
-    with col_top_inv:
-        fig_top_inv = px.bar(top_inv, x="sku", y="onhand_30d", title="재고 TOP 10 SKU (최근 30일)")
-        fig_top_inv.update_layout(xaxis_title="SKU", yaxis_title="재고 수량 (최근 30일 합계)")
-        fig_top_inv.update_traces(width=0.5)
-        fig_top_inv = apply_plotly_theme(fig_top_inv)
-        st.plotly_chart(fig_top_inv, use_container_width=True)
+    # 입고(IN) / 출고(OUT) 추이 (inventory_txn)
+    if txn_in_trend is None or len(txn_in_trend) == 0:
+        st.warning("재고 변동 데이터가 없습니다")
+    else:
+        n_bars = max(len(txn_in_trend), 1)
+        bar_width = min(0.6, max(0.2, 10 / n_bars))
+        col_in, col_out = st.columns(2)
+        with col_in:
+            fig_in = px.bar(txn_in_trend, x="date", y="qty", title="입고(IN) 추이 (최근 60일)")
+            fig_in.update_layout(xaxis_title="일자", yaxis_title="입고 수량")
+            fig_in.update_xaxes(tickformat="%Y-%m-%d")
+            fig_in.update_traces(width=bar_width)
+            fig_in = apply_plotly_theme(fig_in)
+            st.plotly_chart(fig_in, use_container_width=True)
+        with col_out:
+            fig_out = px.bar(txn_out_trend, x="date", y="qty", title="출고(OUT) 추이 (최근 60일)")
+            fig_out.update_layout(xaxis_title="일자", yaxis_title="출고 수량")
+            fig_out.update_xaxes(tickformat="%Y-%m-%d")
+            fig_out.update_traces(width=bar_width)
+            fig_out = apply_plotly_theme(fig_out)
+            st.plotly_chart(fig_out, use_container_width=True)
+
+    # Top 10 SKUs - Demand
+    fig_top = px.bar(top, x="sku", y="demand_30d", title="수요 TOP 10 SKU (최근 30일)")
+    fig_top.update_layout(xaxis_title="SKU", yaxis_title="수요량 (최근 30일)")
+    fig_top.update_traces(width=0.5)
+    fig_top = apply_plotly_theme(fig_top)
+    st.plotly_chart(fig_top, use_container_width=True)
+
+    # Top 10 SKUs - Inventory
+    fig_top_inv = px.bar(top_inv, x="sku", y="onhand_30d", title="재고 TOP 10 SKU (최근 30일)")
+    fig_top_inv.update_layout(xaxis_title="SKU", yaxis_title="재고 수량 (최근 30일 합계)")
+    fig_top_inv.update_traces(width=0.5)
+    fig_top_inv = apply_plotly_theme(fig_top_inv)
+    st.plotly_chart(fig_top_inv, use_container_width=True)
 
 with tab_risk:
     st.subheader("⚠️ 재고 리스크 목록")
