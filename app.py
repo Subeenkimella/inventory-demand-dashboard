@@ -114,34 +114,39 @@ st.sidebar.selectbox(
     format_func=lambda x: "전체" if x == "ALL" else x,
     key="sku_pick",
 )
+range_opts = ["ALL", 7, 14, 30, 60, 90]
+risk_opts = ["ALL", 7, 14, 21, 30, 60]
+overstock_opts = ["ALL", 30, 60, 90, 120]
+
 st.sidebar.selectbox(
     "기간(일)",
-    options=[7, 14, 30, 60, 90],
-    index=[7, 14, 30, 60, 90].index(st.session_state.range_days) if st.session_state.range_days in [7, 14, 30, 60, 90] else 3,
-    format_func=lambda x: f"{x}일",
+    options=range_opts,
+    index=range_opts.index(st.session_state.range_days) if st.session_state.range_days in range_opts else 4,
+    format_func=lambda x: "전체" if x == "ALL" else f"{x}일",
     key="range_days",
 )
 st.sidebar.selectbox(
     "품절기준(일)",
-    options=[7, 14, 21, 30, 60],
-    index=[7, 14, 21, 30, 60].index(st.session_state.risk_threshold_days) if st.session_state.risk_threshold_days in [7, 14, 21, 30, 60] else 1,
-    format_func=lambda x: f"{x}일 미만",
+    options=risk_opts,
+    index=risk_opts.index(st.session_state.risk_threshold_days) if st.session_state.risk_threshold_days in risk_opts else 1,
+    format_func=lambda x: "전체" if x == "ALL" else f"{x}일 미만",
     key="risk_threshold_days",
 )
 st.sidebar.selectbox(
     "과잉기준(일)",
-    options=[30, 60, 90, 120],
-    index=[30, 60, 90, 120].index(st.session_state.overstock_threshold_days) if st.session_state.overstock_threshold_days in [30, 60, 90, 120] else 1,
-    format_func=lambda x: f"{x}일 초과",
+    options=overstock_opts,
+    index=overstock_opts.index(st.session_state.overstock_threshold_days) if st.session_state.overstock_threshold_days in overstock_opts else 2,
+    format_func=lambda x: "전체" if x == "ALL" else f"{x}일 초과",
     key="overstock_threshold_days",
 )
 
 cat = st.session_state.cat
 wh = st.session_state.wh
 sku_pick = st.session_state.sku_pick
-range_days = st.session_state.range_days
-risk_threshold_days = st.session_state.risk_threshold_days
-overstock_threshold_days = st.session_state.overstock_threshold_days
+# "전체" 선택 시: 기간=90일, 품절기준=60일, 과잉기준=120일로 적용
+range_days = 90 if st.session_state.range_days == "ALL" else st.session_state.range_days
+risk_threshold_days = 60 if st.session_state.risk_threshold_days == "ALL" else st.session_state.risk_threshold_days
+overstock_threshold_days = 120 if st.session_state.overstock_threshold_days == "ALL" else st.session_state.overstock_threshold_days
 # --- Executive Overview KPIs (Tab1) ---
 exec_kpi_sql = f"""
 WITH base_sku AS (
