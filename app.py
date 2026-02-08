@@ -240,20 +240,17 @@ top_inv = con.execute(top_inv_sql).fetchdf()
 
 
 # --- IN/OUT trend (inventory_txn, last 60 days, filter by cat/wh/sku_pick) ---
-txn_in_trend = pd.DataFrame(columns=["date", "qty"])
-txn_out_trend = pd.DataFrame(columns=["date", "qty"])
+txn_in_trend = None
+txn_out_trend = None
 
 if inv_txn is not None and len(inv_txn) > 0:
     txn_trend_sql = f"""
     WITH filtered AS (
       SELECT
-        CAST(t.txn_datetime AS DATE) AS dt,
-        UPPER(TRIM(CAST(t.txn_type AS VARCHAR))) AS txn_type_norm,
-        CAST(t.qty AS DOUBLE) AS qty,
-        t.sku,
-        t.warehouse
+        CAST(COALESCE(t.date, CAST(t.txn_datetime AS DATE)) AS DATE) AS dt,
+        CAST(t.qty AS DOUBLE) AS qty
       FROM inventory_txn t
-      WHERE CAST(t.txn_datetime AS DATE)
+      WHERE CAST(COALESCE(t.date, CAST(t.txn_datetime AS DATE)) AS DATE)
             BETWEEN '{latest_date}'::DATE - INTERVAL 60 DAY AND '{latest_date}'::DATE
         {"AND t.warehouse = '"+wh+"'" if wh!="ALL" else ""}
         {"AND t.sku = '"+sku_pick+"'" if sku_pick!="ALL" else ""}
@@ -261,17 +258,22 @@ if inv_txn is not None and len(inv_txn) > 0:
     )
     SELECT
       dt AS date,
-      SUM(CASE WHEN txn_type_norm = 'IN' THEN qty ELSE 0 END) AS in_qty,
-      SUM(CASE WHEN txn_type_norm = 'OUT' THEN ABS(qty) ELSE 0 END) AS out_qty
+      SUM(CASE WHEN qty > 0 THEN qty ELSE 0 END) AS in_qty,
+      SUM(CASE WHEN qty < 0 THEN ABS(qty) ELSE 0 END) AS out_qty
     FROM filtered
     GROUP BY dt
     ORDER BY dt
     """
 
     txn_trend = con.execute(txn_trend_sql).fetchdf()
-    txn_in_trend = txn_trend[["date", "in_qty"]].rename(columns={"in_qty": "qty"})
-    txn_out_trend = txn_trend[["date", "out_qty"]].rename(columns={"out_qty": "qty"})
 
+    # qty가 0만 있는 경우 사용자에게 명확히 안내
+    if txn_trend.empty or ((txn_trend["in_qty"].fillna(0).sum() == 0) and (txn_trend["out_qty"].fillna(0).sum() == 0)):
+        txn_in_trend = None
+        txn_out_trend = None
+    else:
+        txn_in_trend = txn_trend[["date", "in_qty"]].rename(columns={"in_qty": "qty"})
+        txn_out_trend = txn_trend[["date", "out_qty"]].rename(columns={"out_qty": "qty"})
 
 # --- Stockout Risk Table (Risk Tab) ---
 risk_sql = f"""
@@ -422,7 +424,7 @@ with tab_summary:
 
     # 입고(IN) / 출고(OUT) 추이 (inventory_txn)
     if txn_in_trend is None or len(txn_in_trend) == 0:
-        st.warning("재고 변동 데이터가 없습니다")
+        st.warning("선택한 필터 기준으로 60일 내 재고 변동(입/출고) 데이터가 없습니다.")
     else:
         n_bars = max(len(txn_in_trend), 1)
         bar_width = min(0.6, max(0.2, 10 / n_bars))
