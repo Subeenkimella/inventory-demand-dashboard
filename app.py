@@ -238,16 +238,10 @@ LIMIT 10
 """
 top_inv = con.execute(top_inv_sql).fetchdf()
 
-st.write("inv_txn rows:", len(inv_txn))
-if len(inv_txn) > 0:
-    st.write("txn_type unique:", inv_txn["txn_type"].astype(str).str.upper().str.strip().unique()[:20])
-    st.write("inv_txn head:", inv_txn.head(5))
-
-
-
 # --- IN/OUT trend (inventory_txn, last 60 days, filter by cat/wh/sku_pick) ---
-txn_in_trend = None
-txn_out_trend = None
+txn_in_trend = pd.DataFrame(columns=["date", "qty"])
+txn_out_trend = pd.DataFrame(columns=["date", "qty"])
+txn_trend = pd.DataFrame(columns=["date", "in_qty", "out_qty"])
 
 if inv_txn is not None and len(inv_txn) > 0:
     txn_trend_sql = f"""
@@ -285,6 +279,8 @@ if inv_txn is not None and len(inv_txn) > 0:
     txn_trend = con.execute(txn_trend_sql).fetchdf()
     txn_in_trend = txn_trend[["date", "in_qty"]].rename(columns={"in_qty": "qty"})
     txn_out_trend = txn_trend[["date", "out_qty"]].rename(columns={"out_qty": "qty"})
+
+
 
 # --- Stockout Risk Table (Risk Tab) ---
 risk_sql = f"""
@@ -340,9 +336,6 @@ def assign_risk_level(days):
     return "Low"
 
 risk["risk_level"] = risk["coverage_days"].apply(assign_risk_level)
-
-st.write("txn_trend rows:", len(txn_trend))
-st.write(txn_trend.head(10))
 
 
 
