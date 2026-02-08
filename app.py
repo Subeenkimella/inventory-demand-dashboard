@@ -315,7 +315,7 @@ if inv_txn is not None and len(inv_txn) > 0:
         txn_in_trend = txn_trend[["date", "in_qty"]].rename(columns={"in_qty": "qty"})
         txn_out_trend = txn_trend[["date", "out_qty"]].rename(columns={"out_qty": "qty"})
 
-# --- Stockout Risk Table (Risk Tab) ---
+# --- 품절 리스크 분석 Table (Risk Tab) ---
 risk_sql = f"""
 WITH base_sku AS (
   SELECT m.sku, m.sku_name, m.category
@@ -384,7 +384,7 @@ def assign_risk_level(days):
 
 risk["risk_level"] = risk["coverage_days"].apply(assign_risk_level)
 
-# --- Inventory Health Tab: health 테이블 (demand_30d, coverage_days, warehouse 포함) ---
+# --- 재고 건전성 분석 Tab: health 테이블 (demand_30d, coverage_days, warehouse 포함) ---
 health_sql = f"""
 WITH base_sku AS (
   SELECT m.sku, m.sku_name, m.category
@@ -491,15 +491,15 @@ reorder_suggest = con.execute(reorder_sql).fetchdf()
 
 # --- Tabs ---
 tab_exec, tab_health, tab_stockout, tab_actions, tab_movements = st.tabs([
-    "Executive Overview",
-    "Inventory Health",
-    "Stockout Risk",
-    "Actions",
-    "Movements (Optional)",
+    "Overview",
+    "재고 건전성 분석",
+    "품절 리스크 분석",
+    "발주·조치 제안",
+    "재고 In/Out 분석",
 ])
 
 with tab_exec:
-    st.subheader("Executive Overview")
+    st.subheader("Overview")
     col1, col2, col3, col4, col5 = st.columns(5)
 
     total_onhand = int(pd.to_numeric(exec_kpi["total_onhand"], errors="coerce")) if pd.notna(exec_kpi["total_onhand"]) else 0
@@ -551,7 +551,7 @@ with tab_exec:
             st.caption("카테고리별 수요 비중: 데이터 없음")
 
 with tab_health:
-    st.subheader("Inventory Health")
+    st.subheader("재고 건전성 분석")
     st.caption("재고 부족/적정/과잉 구조 파악")
 
     # A. 무수요 SKU 수 카드 + DOS 분포 히스토그램
@@ -626,7 +626,7 @@ with tab_health:
     st.dataframe(display_health, use_container_width=True)
 
 with tab_stockout:
-    st.subheader("⚠️ Stockout Risk")
+    st.subheader("품절 리스크 분석")
     st.caption("DOS(재고 소진 예상일수) = 현재 재고 / 최근 14일 평균 일수요 | Risk Level: Critical 0~3일, High 3~7일, Medium 7~14일, Low 14일 이상")
 
     risk_period_options = [7, 14, 21, 30, 60]
@@ -677,7 +677,7 @@ with tab_stockout:
     st.caption("DOS(재고 소진 예상일수) 기준 리스크 구간만 표시. estimated_stockout_date = 기준일 + CEIL(DOS)일.")
 
 with tab_actions:
-    st.subheader("🔄 Actions — 그래서 뭘 하면 되는데?")
+    st.subheader("발주·조치 제안")
     st.caption("정책에 따른 추천 발주 수량 (target_stock = 일평균수요 × (리드타임 + 목표커버 + 안전재고), recommended_order_qty = max(target_stock - 현재재고, 0), MOQ 적용)")
 
     # 1) 정책 설정 패널
@@ -725,7 +725,7 @@ with tab_actions:
     st.caption("recommended_order_qty > 0 인 SKU만 표시. 정렬: coverage_days ASC, recommended_order_qty DESC.")
 
 with tab_movements:
-    st.subheader("Movements (Optional)")
+    st.subheader("재고 입·출고 이력")
     st.caption("inventory_txn 기반 입출고 추이 및 트랜잭션 목록")
 
     if inv_txn is None or len(inv_txn) == 0:
