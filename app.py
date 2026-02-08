@@ -563,9 +563,16 @@ with tab_exec:
             title="카테고리별 재고 비중 (latest 기준)",
             labels={"onhand_qty": "재고 수량", "category_ko": "카테고리"},
         )
-        fig_cat_inv.update_layout(yaxis={"categoryorder": "total ascending"})
+        fig_cat_inv.update_layout(
+            yaxis={"categoryorder": "total ascending"},
+            bargap=0.6,
+        )
         fig_cat_inv.update_xaxes(tickformat=",.0f")
-        fig_cat_inv.update_traces(marker_color=px.colors.qualitative.Pastel)
+        fig_cat_inv.update_traces(
+            marker_color=["#b5dde8", "#8fc9dc", "#6bb5d0", "#52a0c4", "#4a90b0", "#3d7d98"],
+            marker_line_color="rgba(255,255,255,0.9)",
+            marker_line_width=0.5,
+        )
         fig_cat_inv = apply_plotly_theme(fig_cat_inv)
         st.plotly_chart(fig_cat_inv, use_container_width=True)
     else:
