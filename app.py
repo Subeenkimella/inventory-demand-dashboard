@@ -726,4 +726,76 @@ with tab_actions:
 
 with tab_movements:
     st.subheader("Movements (Optional)")
-    st.info("입출고 추이 등 구성 예정")
+    st.caption("inventory_txn 기반 입출고 추이 및 트랜잭션 목록")
+
+    if inv_txn is None or len(inv_txn) == 0:
+        st.info("inventory_txn 데이터가 없거나 비어 있습니다. CSV를 추가하면 입출고 차트와 트랜잭션 테이블이 표시됩니다.")
+    else:
+        # 1) 입출고 집계 (dt/qty 강제 캐스팅, range_days)
+        txn_trend_sql = f"""
+        WITH filtered AS (
+          SELECT
+            CAST(COALESCE(t.date, CAST(t.txn_datetime AS DATE)) AS DATE) AS dt,
+            TRY_CAST(t.qty AS DOUBLE) AS qty
+          FROM inventory_txn t
+          WHERE CAST(COALESCE(t.date, CAST(t.txn_datetime AS DATE)) AS DATE)
+                BETWEEN '{latest_date}'::DATE - INTERVAL {range_days} DAY AND '{latest_date}'::DATE
+            {"AND t.warehouse = '"+wh+"'" if wh!="ALL" else ""}
+            {"AND t.sku = '"+sku_pick+"'" if sku_pick!="ALL" else ""}
+            {"AND EXISTS (SELECT 1 FROM sku_master m WHERE m.sku = t.sku AND m.category = '"+cat+"')" if cat!="ALL" else ""}
+        )
+        SELECT
+          dt AS date,
+          SUM(CASE WHEN COALESCE(qty, 0) > 0 THEN qty ELSE 0 END) AS in_qty,
+          SUM(CASE WHEN COALESCE(qty, 0) < 0 THEN ABS(qty) ELSE 0 END) AS out_qty
+        FROM filtered
+        GROUP BY dt
+        ORDER BY dt
+        """
+        txn_trend = con.execute(txn_trend_sql).fetchdf()
+        sum_in = txn_trend["in_qty"].fillna(0).sum() if not txn_trend.empty else 0
+        sum_out = txn_trend["out_qty"].fillna(0).sum() if not txn_trend.empty else 0
+        has_data = (sum_in != 0 or sum_out != 0) and not txn_trend.empty
+
+        if not has_data:
+            st.warning("필터 조건 내 입출고 합계(in_qty/out_qty)가 0이거나 데이터가 없습니다. 기간·창고·SKU·카테고리 필터를 확인하거나, qty가 0이 아닌 트랜잭션이 있는지 확인하세요.")
+        else:
+            col_in, col_out = st.columns(2)
+            with col_in:
+                fig_in = px.bar(txn_trend, x="date", y="in_qty", title=f"입고(IN) — 최근 {range_days}일")
+                fig_in.update_layout(xaxis_title="일자", yaxis_title="입고 수량")
+                fig_in.update_xaxes(tickformat="%Y-%m-%d")
+                fig_in.update_yaxes(tickformat=",.0f")
+                fig_in = apply_plotly_theme(fig_in)
+                st.plotly_chart(fig_in, use_container_width=True)
+            with col_out:
+                fig_out = px.bar(txn_trend, x="date", y="out_qty", title=f"출고(OUT) — 최근 {range_days}일")
+                fig_out.update_layout(xaxis_title="일자", yaxis_title="출고 수량")
+                fig_out.update_xaxes(tickformat="%Y-%m-%d")
+                fig_out.update_yaxes(tickformat=",.0f")
+                fig_out = apply_plotly_theme(fig_out)
+                st.plotly_chart(fig_out, use_container_width=True)
+
+        # 3) 트랜잭션 테이블 (txn_datetime DESC, limit 200)
+        txn_list_sql = f"""
+        SELECT
+          t.txn_datetime,
+          CAST(COALESCE(t.date, CAST(t.txn_datetime AS DATE)) AS DATE) AS dt,
+          t.sku, t.warehouse, t.txn_type,
+          TRY_CAST(t.qty AS DOUBLE) AS qty,
+          t.ref_id, t.reason_code
+        FROM inventory_txn t
+        WHERE 1=1
+          {"AND t.warehouse = '"+wh+"'" if wh!="ALL" else ""}
+          {"AND t.sku = '"+sku_pick+"'" if sku_pick!="ALL" else ""}
+          {"AND EXISTS (SELECT 1 FROM sku_master m WHERE m.sku = t.sku AND m.category = '"+cat+"')" if cat!="ALL" else ""}
+        ORDER BY t.txn_datetime DESC
+        LIMIT 200
+        """
+        txn_list = con.execute(txn_list_sql).fetchdf()
+        st.subheader("트랜잭션 목록 (최신 200건)")
+        if txn_list.empty:
+            st.caption("필터 조건에 맞는 트랜잭션이 없습니다.")
+        else:
+            st.dataframe(txn_list, use_container_width=True)
+        st.caption("dt = COALESCE(date, txn_datetime 날짜). qty: 숫자형. 정렬: txn_datetime DESC, 최대 200건.")
