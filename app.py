@@ -552,7 +552,6 @@ with tab_exec:
         fig_inv_trend = apply_plotly_theme(fig_inv_trend)
         st.plotly_chart(fig_inv_trend, use_container_width=True)
 
-    st.subheader("분해 뷰")
     col_cat_inv, col_cat_demand = st.columns(2)
     with col_cat_inv:
         if not cat_inv.empty and cat_inv["onhand_qty"].sum() > 0:
