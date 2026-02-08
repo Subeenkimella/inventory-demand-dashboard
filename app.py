@@ -677,9 +677,52 @@ with tab_stockout:
     st.caption("DOS(재고 소진 예상일수) 기준 리스크 구간만 표시. estimated_stockout_date = 기준일 + CEIL(DOS)일.")
 
 with tab_actions:
-    st.subheader("🔄 발주 필요 목록")
-    st.caption("추천 발주 수량 = max(재주문 기준 - 현재 재고, 0)")
-    st.dataframe(reorder_suggest, use_container_width=True)
+    st.subheader("🔄 Actions — 그래서 뭘 하면 되는데?")
+    st.caption("정책에 따른 추천 발주 수량 (target_stock = 일평균수요 × (리드타임 + 목표커버 + 안전재고), recommended_order_qty = max(target_stock - 현재재고, 0), MOQ 적용)")
+
+    # 1) 정책 설정 패널
+    st.subheader("정책 설정")
+    col_lt, col_tc, col_ss, col_moq = st.columns(4)
+    with col_lt:
+        lead_time_days = st.number_input("lead_time_days (리드타임, 일)", min_value=0, value=7, step=1, key="lead_time_days")
+    with col_tc:
+        target_cover_days = st.number_input("target_cover_days (목표 커버 일수)", min_value=0, value=14, step=1, key="target_cover_days")
+    with col_ss:
+        safety_stock_days = st.number_input("safety_stock_days (안전재고 일수)", min_value=0, value=3, step=1, key="safety_stock_days")
+    with col_moq:
+        moq = st.number_input("moq (최소 발주 수량, 0=미적용)", min_value=0, value=0, step=1, key="moq")
+
+    # 2) 추천 발주 계산 (risk 기준: warehouse 필터 이미 반영됨)
+    actions_base = risk[["sku", "sku_name", "category", "warehouse", "onhand_qty", "avg_daily_demand_14d", "coverage_days"]].copy()
+    onhand = pd.to_numeric(actions_base["onhand_qty"], errors="coerce").fillna(0)
+    avg_d = pd.to_numeric(actions_base["avg_daily_demand_14d"], errors="coerce").fillna(0)
+    total_days = lead_time_days + target_cover_days + safety_stock_days
+    target_stock = (avg_d * total_days).round(0).astype(int)
+    recommended_order_qty = (target_stock - onhand).clip(lower=0).astype(int)
+    if moq > 0:
+        recommended_order_qty = recommended_order_qty.where(recommended_order_qty <= 0, recommended_order_qty.clip(lower=moq)).astype(int)
+    actions_base["target_stock"] = target_stock
+    actions_base["recommended_order_qty"] = recommended_order_qty
+
+    # 3) recommended_order_qty > 0 만 표시, 정렬: coverage_days ASC, recommended_order_qty DESC
+    actions_display = actions_base[actions_base["recommended_order_qty"] > 0].copy()
+    actions_display = actions_display.sort_values(
+        ["coverage_days", "recommended_order_qty"],
+        ascending=[True, False],
+        na_position="last",
+    )
+
+    # 4) 테이블 열 (단위/콤마 포맷은 st.dataframe이 숫자 컬럼 자동 포맷, 또는 column_config 사용)
+    st.subheader("추천 발주 테이블")
+    display_cols = ["sku", "sku_name", "category", "warehouse", "onhand_qty", "avg_daily_demand_14d", "coverage_days", "target_stock", "recommended_order_qty"]
+    out = actions_display[display_cols].copy()
+    out["onhand_qty"] = out["onhand_qty"].apply(lambda x: f"{int(x):,}" if pd.notna(x) else "0")
+    out["avg_daily_demand_14d"] = out["avg_daily_demand_14d"].apply(lambda x: f"{float(x):,.1f}" if pd.notna(x) else "0")
+    out["coverage_days"] = out["coverage_days"].apply(lambda x: f"{float(x):,.1f}" if pd.notna(x) else "—")
+    out["target_stock"] = out["target_stock"].apply(lambda x: f"{int(x):,}")
+    out["recommended_order_qty"] = out["recommended_order_qty"].apply(lambda x: f"{int(x):,}")
+    st.dataframe(out, use_container_width=True)
+    st.caption("recommended_order_qty > 0 인 SKU만 표시. 정렬: coverage_days ASC, recommended_order_qty DESC.")
 
 with tab_movements:
     st.subheader("Movements (Optional)")
