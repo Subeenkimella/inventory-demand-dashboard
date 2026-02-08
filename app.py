@@ -238,20 +238,22 @@ LIMIT 10
 """
 top_inv = con.execute(top_inv_sql).fetchdf()
 
+
 # --- IN/OUT trend (inventory_txn, last 60 days, filter by cat/wh/sku_pick) ---
 txn_in_trend = pd.DataFrame(columns=["date", "qty"])
 txn_out_trend = pd.DataFrame(columns=["date", "qty"])
-txn_trend = pd.DataFrame(columns=["date", "in_qty", "out_qty"])
 
 if inv_txn is not None and len(inv_txn) > 0:
     txn_trend_sql = f"""
     WITH filtered AS (
       SELECT
-        CAST(COALESCE(t.date, CAST(t.txn_datetime AS DATE)) AS DATE) AS dt,
+        CAST(t.txn_datetime AS DATE) AS dt,
         UPPER(TRIM(CAST(t.txn_type AS VARCHAR))) AS txn_type_norm,
-        CAST(t.qty AS DOUBLE) AS qty
+        CAST(t.qty AS DOUBLE) AS qty,
+        t.sku,
+        t.warehouse
       FROM inventory_txn t
-      WHERE CAST(COALESCE(t.date, CAST(t.txn_datetime AS DATE)) AS DATE)
+      WHERE CAST(t.txn_datetime AS DATE)
             BETWEEN '{latest_date}'::DATE - INTERVAL 60 DAY AND '{latest_date}'::DATE
         {"AND t.warehouse = '"+wh+"'" if wh!="ALL" else ""}
         {"AND t.sku = '"+sku_pick+"'" if sku_pick!="ALL" else ""}
@@ -259,18 +261,8 @@ if inv_txn is not None and len(inv_txn) > 0:
     )
     SELECT
       dt AS date,
-      SUM(
-        CASE
-          WHEN txn_type_norm IN ('IN','INBOUND','RECEIPT','GR') THEN qty
-          ELSE 0
-        END
-      ) AS in_qty,
-      SUM(
-        CASE
-          WHEN txn_type_norm IN ('OUT','OUTBOUND','ISSUE','GI') THEN ABS(qty)
-          ELSE 0
-        END
-      ) AS out_qty
+      SUM(CASE WHEN txn_type_norm = 'IN' THEN qty ELSE 0 END) AS in_qty,
+      SUM(CASE WHEN txn_type_norm = 'OUT' THEN ABS(qty) ELSE 0 END) AS out_qty
     FROM filtered
     GROUP BY dt
     ORDER BY dt
@@ -279,7 +271,6 @@ if inv_txn is not None and len(inv_txn) > 0:
     txn_trend = con.execute(txn_trend_sql).fetchdf()
     txn_in_trend = txn_trend[["date", "in_qty"]].rename(columns={"in_qty": "qty"})
     txn_out_trend = txn_trend[["date", "out_qty"]].rename(columns={"out_qty": "qty"})
-
 
 
 # --- Stockout Risk Table (Risk Tab) ---
