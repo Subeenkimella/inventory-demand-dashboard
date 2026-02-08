@@ -250,37 +250,37 @@ txn_in_trend = None
 txn_out_trend = None
 
 if inv_txn is not None and len(inv_txn) > 0:
-txn_trend_sql = f"""
-WITH filtered AS (
-  SELECT
-    CAST(COALESCE(t.date, CAST(t.txn_datetime AS DATE)) AS DATE) AS dt,
-    UPPER(TRIM(CAST(t.txn_type AS VARCHAR))) AS txn_type_norm,
-    CAST(t.qty AS DOUBLE) AS qty
-  FROM inventory_txn t
-  WHERE CAST(COALESCE(t.date, CAST(t.txn_datetime AS DATE)) AS DATE)
-        BETWEEN '{latest_date}'::DATE - INTERVAL 60 DAY AND '{latest_date}'::DATE
-    {"AND t.warehouse = '"+wh+"'" if wh!="ALL" else ""}
-    {"AND t.sku = '"+sku_pick+"'" if sku_pick!="ALL" else ""}
-    {"AND EXISTS (SELECT 1 FROM sku_master m WHERE m.sku = t.sku AND m.category = '"+cat+"')" if cat!="ALL" else ""}
-)
-SELECT
-  dt AS date,
-  SUM(
-    CASE
-      WHEN txn_type_norm IN ('IN','INBOUND','RECEIPT','GR') THEN qty
-      ELSE 0
-    END
-  ) AS in_qty,
-  SUM(
-    CASE
-      WHEN txn_type_norm IN ('OUT','OUTBOUND','ISSUE','GI') THEN ABS(qty)
-      ELSE 0
-    END
-  ) AS out_qty
-FROM filtered
-GROUP BY dt
-ORDER BY dt
-"""
+    txn_trend_sql = f"""
+    WITH filtered AS (
+      SELECT
+        CAST(COALESCE(t.date, CAST(t.txn_datetime AS DATE)) AS DATE) AS dt,
+        UPPER(TRIM(CAST(t.txn_type AS VARCHAR))) AS txn_type_norm,
+        CAST(t.qty AS DOUBLE) AS qty
+      FROM inventory_txn t
+      WHERE CAST(COALESCE(t.date, CAST(t.txn_datetime AS DATE)) AS DATE)
+            BETWEEN '{latest_date}'::DATE - INTERVAL 60 DAY AND '{latest_date}'::DATE
+        {"AND t.warehouse = '"+wh+"'" if wh!="ALL" else ""}
+        {"AND t.sku = '"+sku_pick+"'" if sku_pick!="ALL" else ""}
+        {"AND EXISTS (SELECT 1 FROM sku_master m WHERE m.sku = t.sku AND m.category = '"+cat+"')" if cat!="ALL" else ""}
+    )
+    SELECT
+      dt AS date,
+      SUM(
+        CASE
+          WHEN txn_type_norm IN ('IN','INBOUND','RECEIPT','GR') THEN qty
+          ELSE 0
+        END
+      ) AS in_qty,
+      SUM(
+        CASE
+          WHEN txn_type_norm IN ('OUT','OUTBOUND','ISSUE','GI') THEN ABS(qty)
+          ELSE 0
+        END
+      ) AS out_qty
+    FROM filtered
+    GROUP BY dt
+    ORDER BY dt
+    """
 
     txn_trend = con.execute(txn_trend_sql).fetchdf()
     txn_in_trend = txn_trend[["date", "in_qty"]].rename(columns={"in_qty": "qty"})
