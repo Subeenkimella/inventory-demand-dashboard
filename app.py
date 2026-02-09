@@ -509,17 +509,6 @@ tab_exec, tab_health, tab_stockout, tab_actions, tab_movements = st.tabs([
 ])
 
 with tab_exec:
-    st.subheader("Overview")
-    st.caption("기준일 KPI·우선 점검 이슈·추이·카테고리 비중을 한눈에 보고, 바로 할 일부터 진행하세요.")
-    if summary_stockout_cnt > 0:
-        st.info("**바로 할 일:** **품절 위험** 탭에서 Critical SKU부터 확인하세요.")
-    elif summary_overstock_cnt > 0:
-        st.info("**바로 할 일:** **재고 적정성** 탭에서 과잉 구간을 확인한 뒤 **발주·조치** 탭에서 조치하세요.")
-    else:
-        st.info("**바로 할 일:** **재고 적정성**·**품절 위험** 탭에서 예외가 없는지 확인하세요.")
-
-    st.markdown(f"**적용 예측:** {model_type} · 학습 {lookback_days}일 · 예측 기간 {horizon_days}일")
-
     st.markdown("#### 1. 현황 요약 (기준일 기준)")
     ov_trend_opts = [30, 60, 90, 180, "ALL"]
     ov_dos_opts = [7, 14, 30]
