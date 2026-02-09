@@ -1424,20 +1424,20 @@ with tab_actions:
         actions_base["avg_daily_demand_14d"] = actions_base["forecast_avg_daily"]
         actions_base = actions_base.drop(columns=["forecast_avg_daily", "forecast_dos", "stockout_date_forecast", "lead_time_forecast"], errors="ignore")
 
-    # reason MECE: 예측 시 "예측 품절 임박" / "리드타임 수요 대비 부족" / "정책 보충". 과거 시 기존 유지.
+    # 추천 사유: 실적/예측 기준별로 사용자가 이해하기 쉬운 문구로 분류
     def assign_reason_past(row):
         if pd.notna(row["coverage_days"]) and row["coverage_days"] < target_cover_days:
-            return "즉시위험(DOS<목표커버)"
+            return "품절 임박(재고로 버틸 수 있는 일수가 목표보다 짧음)"
         if row["onhand_qty"] < row["target_stock"]:
-            return "정책보충(ROP 미달)"
-        return "기타"
+            return "목표 재고 미달(현재 재고가 정책 목표보다 적음)"
+        return "기타(여유 재고 확보 등)"
 
     def assign_reason_forecast(row):
         if pd.notna(row["coverage_days"]) and row["coverage_days"] < target_cover_days:
-            return "예측 품절 임박"
+            return "품절 임박(예측상 재고 소진일이 빠름)"
         if row["onhand_qty"] < row["target_stock"]:
-            return "리드타임 수요 대비 부족"
-        return "정책 보충"
+            return "리드타임 구간 수요 대비 재고 부족"
+        return "여유 재고 확보(정책 목표 충족을 위한 보충)"
 
     actions_base["reason"] = actions_base.apply(
         assign_reason_forecast if use_forecast_actions else assign_reason_past, axis=1
@@ -1449,11 +1449,10 @@ with tab_actions:
         na_position="last",
     )
 
-    # reason 멀티셀렉트; when show_only_exceptions OFF, default to all reasons
     reason_options = (
-        ["예측 품절 임박", "리드타임 수요 대비 부족", "정책 보충"]
+        ["품절 임박(예측상 재고 소진일이 빠름)", "리드타임 구간 수요 대비 재고 부족", "여유 재고 확보(정책 목표 충족을 위한 보충)"]
         if use_forecast_actions
-        else ["즉시위험(DOS<목표커버)", "정책보충(ROP 미달)", "기타"]
+        else ["품절 임박(재고로 버틸 수 있는 일수가 목표보다 짧음)", "목표 재고 미달(현재 재고가 정책 목표보다 적음)", "기타(여유 재고 확보 등)"]
     )
     default_reasons = reason_options[:2] if show_only_exceptions else reason_options
     selected_reasons = st.multiselect(
