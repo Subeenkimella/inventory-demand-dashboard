@@ -320,10 +320,21 @@ st.markdown("""
     [data-testid="stMetricLabel"] { font-size: 0.9rem !important; color: #555; }
     .stCaptionContainer { font-size: 0.85rem !important; color: #666; }
     hr { margin: 1rem 0 !important; }
+    /* 대시보드 헤더 영역 */
+    .dashboard-header-box {
+        padding: 0.65rem 1rem;
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        font-size: 0.8rem;
+        color: #334155;
+        line-height: 1.5;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+    .dashboard-header-box .label { font-size: 0.7rem; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.2rem; }
+    .dashboard-header-box .value { font-weight: 500; color: #0f172a; }
 </style>
 """, unsafe_allow_html=True)
-st.title("📦 재고·수요 모니터링 대시보드")
-st.caption("기준일 기준 재고·수요·예측을 한 화면에서 확인하고, 상태·리스크·조치를 바로 파악할 수 있습니다.")
 
 # Latest snapshot date
 latest_date = con.execute("SELECT MAX(date) FROM inventory_daily").fetchone()[0]
@@ -436,7 +447,7 @@ forecast_metrics_df = pd.DataFrame()
 if not forecast_daily.empty and not latest_inv_df.empty:
     forecast_metrics_df = compute_forecast_metrics(forecast_daily, latest_inv_df, horizon_days, latest_date)
 
-# --- Ops Header: 선택 필터 요약 (오른쪽 상단 박스) ---
+# --- 대시보드 헤더: 타이틀 + 현재 선택(필터·예측) ---
 filter_parts = []
 if cat != "ALL":
     filter_parts.append(f"카테고리: {category_map.get(cat, cat)}")
@@ -444,27 +455,24 @@ if wh != "ALL":
     filter_parts.append(f"창고: {warehouse_map.get(wh, wh)}")
 if sku_pick != "ALL":
     filter_parts.append(f"SKU: {sku_pick}")
-filter_line = " · ".join(filter_parts) if filter_parts else "필터 없음 (전체 카테고리·창고·SKU)"
-forecast_line = f"예측: {model_type} · 학습 {lookback_days}일 · 예측 기간 {horizon_days}일"
-box_content = f"""
-<div style="
-  padding: 0.5rem 0.75rem;
-  background: #f8f9fa;
-  border: 1px solid #dee2e6;
-  border-radius: 8px;
-  font-size: 0.78rem;
-  color: #495057;
-  line-height: 1.45;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-">
-  <div><strong>기준일</strong> {fmt_date(latest_date)}</div>
-  <div style="margin-top: 0.25rem;">{filter_line}</div>
-  <div style="margin-top: 0.2rem;">{forecast_line}</div>
+filter_line = " · ".join(filter_parts) if filter_parts else "전체"
+forecast_line = f"{model_type} · 학습 {lookback_days}일 · 예측 {horizon_days}일"
+header_box_html = f"""
+<div class="dashboard-header-box">
+  <div class="label">기준일</div>
+  <div class="value">{fmt_date(latest_date)}</div>
+  <div class="label" style="margin-top: 0.5rem;">필터</div>
+  <div class="value">{filter_line}</div>
+  <div class="label" style="margin-top: 0.5rem;">예측 설정</div>
+  <div class="value">{forecast_line}</div>
 </div>
 """
-col_spacer, col_box = st.columns([3, 1])
+col_title, col_box = st.columns([2.2, 1])
+with col_title:
+    st.title("📦 재고·수요 모니터링 대시보드")
+    st.caption("기준일 기준 재고·수요·예측을 한 화면에서 확인하고, 상태·리스크·조치를 바로 파악할 수 있습니다.")
 with col_box:
-    st.markdown(box_content, unsafe_allow_html=True)
+    st.markdown(header_box_html, unsafe_allow_html=True)
 st.markdown("---")
 
 # Lightweight counts for "Recommended next step" (fixed dos_basis=14)
