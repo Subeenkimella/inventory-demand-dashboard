@@ -73,21 +73,7 @@ plant_map = {
   "PLANT-B": "공장 B",
 }
 
-# 공통 필터 session_state 초기화 (모든 탭 공통 적용)
-if "cat" not in st.session_state:
-    st.session_state.cat = "ALL"
-if "wh" not in st.session_state:
-    st.session_state.wh = "ALL"
-if "sku_pick" not in st.session_state:
-    st.session_state.sku_pick = "ALL"
-if "range_days" not in st.session_state:
-    st.session_state.range_days = 60
-if "risk_threshold_days" not in st.session_state:
-    st.session_state.risk_threshold_days = 14
-if "overstock_threshold_days" not in st.session_state:
-    st.session_state.overstock_threshold_days = 60
-
-# 공통 필터 UI — 왼쪽 사이드바 (모든 탭 공통, session_state 사용)
+# 공통 필터 UI — 왼쪽 사이드바 (key로 session_state에 저장, 수동 초기화 없이 위젯만 사용)
 st.sidebar.header("공통 필터")
 cat_opts = ["ALL"] + sorted(sku["category"].unique())
 wh_opts = ["ALL"] + sorted(inv["warehouse"].unique())
@@ -96,21 +82,21 @@ sku_opts = ["ALL"] + sorted(sku["sku"].unique())
 st.sidebar.selectbox(
     "카테고리",
     options=cat_opts,
-    index=cat_opts.index(st.session_state.cat) if st.session_state.cat in cat_opts else 0,
+    index=cat_opts.index(st.session_state.get("cat", "ALL")) if st.session_state.get("cat", "ALL") in cat_opts else 0,
     format_func=lambda x: category_map.get(x, x),
     key="cat",
 )
 st.sidebar.selectbox(
     "창고",
     options=wh_opts,
-    index=wh_opts.index(st.session_state.wh) if st.session_state.wh in wh_opts else 0,
+    index=wh_opts.index(st.session_state.get("wh", "ALL")) if st.session_state.get("wh", "ALL") in wh_opts else 0,
     format_func=lambda x: warehouse_map.get(x, x),
     key="wh",
 )
 st.sidebar.selectbox(
     "SKU",
     options=sku_opts,
-    index=sku_opts.index(st.session_state.sku_pick) if st.session_state.sku_pick in sku_opts else 0,
+    index=sku_opts.index(st.session_state.get("sku_pick", "ALL")) if st.session_state.get("sku_pick", "ALL") in sku_opts else 0,
     format_func=lambda x: "전체" if x == "ALL" else x,
     key="sku_pick",
 )
@@ -121,32 +107,35 @@ overstock_opts = ["ALL", 30, 60, 90, 120]
 st.sidebar.selectbox(
     "기간(일)",
     options=range_opts,
-    index=range_opts.index(st.session_state.range_days) if st.session_state.range_days in range_opts else 4,
+    index=range_opts.index(st.session_state.get("range_days", 60)) if st.session_state.get("range_days", 60) in range_opts else 4,
     format_func=lambda x: "전체" if x == "ALL" else f"{x}일",
     key="range_days",
 )
 st.sidebar.selectbox(
     "품절기준(일)",
     options=risk_opts,
-    index=risk_opts.index(st.session_state.risk_threshold_days) if st.session_state.risk_threshold_days in risk_opts else 1,
+    index=risk_opts.index(st.session_state.get("risk_threshold_days", 14)) if st.session_state.get("risk_threshold_days", 14) in risk_opts else 1,
     format_func=lambda x: "전체" if x == "ALL" else f"{x}일 미만",
     key="risk_threshold_days",
 )
 st.sidebar.selectbox(
     "과잉기준(일)",
     options=overstock_opts,
-    index=overstock_opts.index(st.session_state.overstock_threshold_days) if st.session_state.overstock_threshold_days in overstock_opts else 2,
+    index=overstock_opts.index(st.session_state.get("overstock_threshold_days", 60)) if st.session_state.get("overstock_threshold_days", 60) in overstock_opts else 2,
     format_func=lambda x: "전체" if x == "ALL" else f"{x}일 초과",
     key="overstock_threshold_days",
 )
 
-cat = st.session_state.cat
-wh = st.session_state.wh
-sku_pick = st.session_state.sku_pick
+cat = st.session_state.get("cat", "ALL")
+wh = st.session_state.get("wh", "ALL")
+sku_pick = st.session_state.get("sku_pick", "ALL")
 # "전체" 선택 시: 기간=90일, 품절기준=60일, 과잉기준=120일로 적용
-range_days = 90 if st.session_state.range_days == "ALL" else st.session_state.range_days
-risk_threshold_days = 60 if st.session_state.risk_threshold_days == "ALL" else st.session_state.risk_threshold_days
-overstock_threshold_days = 120 if st.session_state.overstock_threshold_days == "ALL" else st.session_state.overstock_threshold_days
+_range = st.session_state.get("range_days", 60)
+_risk = st.session_state.get("risk_threshold_days", 14)
+_over = st.session_state.get("overstock_threshold_days", 60)
+range_days = 90 if _range == "ALL" else _range
+risk_threshold_days = 60 if _risk == "ALL" else _risk
+overstock_threshold_days = 120 if _over == "ALL" else _over
 # --- Executive Overview KPIs (Tab1) ---
 exec_kpi_sql = f"""
 WITH base_sku AS (
