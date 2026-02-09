@@ -424,79 +424,6 @@ def _base_sku_cte(base_where, with_name=True):
     return f"WITH base_sku AS {sql}" if with_name else sql
 
 
-def get_data_freshness(con, base_where, latest_date, lookback_days, wh, _inv_wh_where, txn_days=30):
-    """Return dict: n_skus, n_demand_rows, n_inv_rows, n_txn_rows, pct_skus_no_demand_14, pct_skus_no_inv."""
-    latest = str(pd.to_datetime(latest_date).date())
-    try:
-        n_skus = con.execute(f"""
-            SELECT COUNT(DISTINCT m.sku) FROM sku_master m
-            WHERE 1=1 {base_where}
-        """).fetchone()[0]
-    except Exception:
-        n_skus = 0
-    try:
-        base_sku_sql = f"SELECT m.sku FROM sku_master m WHERE 1=1 {base_where}"
-        n_demand_rows = con.execute(f"""
-            WITH base_sku AS ({base_sku_sql})
-            SELECT COUNT(*) FROM demand_daily d
-            JOIN base_sku b ON d.sku = b.sku
-            WHERE d.date >= '{latest}'::DATE - INTERVAL {lookback_days} DAY AND d.date <= '{latest}'::DATE
-        """).fetchone()[0]
-    except Exception:
-        n_demand_rows = 0
-    try:
-        n_inv_rows = con.execute(f"""
-            SELECT COUNT(*) FROM inventory_daily
-            WHERE date = '{latest}' {_inv_wh_where(wh)}
-        """).fetchone()[0]
-    except Exception:
-        n_inv_rows = 0
-    n_txn_rows = 0
-    try:
-        if "inventory_txn" in [t[0] for t in con.execute("SELECT table_name FROM information_schema.tables").fetchall()]:
-            wh_clause = f"AND warehouse = '{wh}'" if wh != "ALL" else ""
-            sku_clause = f"AND sku = '{sku_pick}'" if sku_pick != "ALL" else ""
-            cat_clause = f"AND EXISTS (SELECT 1 FROM sku_master m WHERE m.sku = inventory_txn.sku AND m.category = '{cat}')" if cat != "ALL" else ""
-            n_txn_rows = con.execute(f"""
-                SELECT COUNT(*) FROM inventory_txn
-                WHERE CAST(COALESCE(date, CAST(txn_datetime AS DATE)) AS DATE) >= '{latest}'::DATE - INTERVAL {txn_days} DAY
-                  AND CAST(COALESCE(date, CAST(txn_datetime AS DATE)) AS DATE) <= '{latest}'::DATE
-                {wh_clause} {sku_clause} {cat_clause}
-            """).fetchone()[0]
-    except Exception:
-        pass
-    try:
-        no_demand = con.execute(f"""
-            WITH base_sku AS (SELECT m.sku FROM sku_master m WHERE 1=1 {base_where}),
-            demand_14 AS (SELECT sku, SUM(demand_qty) AS s FROM demand_daily
-                WHERE date > '{latest}'::DATE - INTERVAL 14 DAY AND date <= '{latest}' GROUP BY sku)
-            SELECT COUNT(*) FROM base_sku b
-            LEFT JOIN demand_14 d ON b.sku = d.sku
-            WHERE COALESCE(d.s, 0) = 0
-        """).fetchone()[0]
-        pct_no_demand = (no_demand / n_skus * 100) if n_skus else 0
-    except Exception:
-        pct_no_demand = 0
-    try:
-        _wh = _inv_wh_where(wh).replace("warehouse", "i.warehouse") if wh != "ALL" else ""
-        no_inv = con.execute(f"""
-            WITH base_sku AS (SELECT m.sku FROM sku_master m WHERE 1=1 {base_where})
-            SELECT COUNT(*) FROM base_sku b
-            WHERE NOT EXISTS (SELECT 1 FROM inventory_daily i WHERE i.sku = b.sku AND i.date = '{latest}' {_wh})
-        """).fetchone()[0]
-        pct_no_inv = (no_inv / n_skus * 100) if n_skus else 0
-    except Exception:
-        pct_no_inv = 0
-    return {
-        "n_skus": n_skus,
-        "n_demand_rows": n_demand_rows,
-        "n_inv_rows": n_inv_rows,
-        "n_txn_rows": n_txn_rows,
-        "pct_no_demand": pct_no_demand,
-        "pct_no_inv": pct_no_inv,
-    }
-
-
 # 수요 예측 결과 (캐시: cat/wh/sku_pick/horizon/model/lookback/latest_date 변경 시 재계산)
 forecast_daily = compute_forecast(demand, sku, inv, cat, wh, sku_pick, str(latest_date), horizon_days, model_type, lookback_days)
 latest_inv_df = con.execute(f"""
@@ -509,8 +436,7 @@ forecast_metrics_df = pd.DataFrame()
 if not forecast_daily.empty and not latest_inv_df.empty:
     forecast_metrics_df = compute_forecast_metrics(forecast_daily, latest_inv_df, horizon_days, latest_date)
 
-# --- Ops Header & Data Freshness ---
-freshness = get_data_freshness(con, base_where, latest_date, lookback_days, wh, _inv_wh_where)
+# --- Ops Header ---
 st.markdown("---")
 st.markdown(f"**기준일** `{fmt_date(latest_date)}`")
 filter_parts = []
@@ -522,17 +448,6 @@ if sku_pick != "ALL":
     filter_parts.append(f"SKU: {sku_pick}")
 st.caption(" · ".join(filter_parts) if filter_parts else "필터 없음 (전체 카테고리·창고·SKU)")
 st.caption(f"예측: {model_type} · 학습 {lookback_days}일 · 예측 기간 {horizon_days}일")
-with st.expander("데이터 점검(적재 현황)"):
-    st.write("**레코드 수**")
-    st.write(f"- 대상 SKU 수: **{freshness['n_skus']:,}** · 수요 행(학습구간): **{freshness['n_demand_rows']:,}** · 기준일 재고 행: **{freshness['n_inv_rows']:,}** · 거래 행(최근 30일): **{freshness['n_txn_rows']:,}**")
-    st.write("**결측**")
-    st.write(f"- 최근 14일 수요 0인 SKU 비율: **{fmt_pct(freshness['pct_no_demand'])}** · 기준일 재고 행 없는 SKU 비율: **{fmt_pct(freshness['pct_no_inv'])}**")
-    if freshness["n_demand_rows"] == 0:
-        st.warning("학습 구간에 수요 데이터가 없습니다. 기준일·필터를 확인하세요.")
-    if freshness["n_inv_rows"] == 0:
-        st.warning("기준일 재고 스냅샷이 없습니다. inventory_daily 적재 현황을 확인하세요.")
-    if freshness["pct_no_demand"] > 50 and freshness["n_skus"] > 0:
-        st.warning("대상 SKU 중 절반 이상이 최근 14일 수요 0입니다. 수요 데이터·필터를 확인하세요.")
 st.markdown("---")
 
 # Lightweight counts for "Recommended next step" (fixed dos_basis=14)
