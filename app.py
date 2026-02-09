@@ -21,6 +21,45 @@ def apply_plotly_theme(fig):
     )
     return fig
 
+
+# Plotly add_vline/add_hline(..., annotation_text=...) can raise TypeError when x/y is a
+# pandas Timestamp (Plotly internally tries sum([Timestamp]) for annotation position).
+# Use separate add_vline/add_hline (no annotation_text) plus add_annotation for labels.
+
+def to_plotly_x(value):
+    """Convert pandas Timestamp/date/string to a value safe for Plotly (datetime or string). Numerics passed through."""
+    if value is None:
+        return None
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value
+    try:
+        return pd.to_datetime(value).to_pydatetime()
+    except Exception:
+        return str(value)
+
+
+def add_ref_vline(fig, x, label="기준일", line_dash="dot", line_color="gray"):
+    """Draw a vertical reference line and a separate text annotation (avoids annotation_text Timestamp bug)."""
+    x0 = to_plotly_x(x)
+    fig.add_vline(x=x0, line_dash=line_dash, line_color=line_color)
+    fig.add_annotation(
+        x=x0, y=1, xref="x", yref="paper",
+        text=label, showarrow=False,
+        yanchor="bottom", xanchor="left",
+    )
+    return fig
+
+
+def add_ref_hline(fig, y, label, line_dash="dot", line_color="gray"):
+    """Draw a horizontal reference line and a separate text annotation (avoids annotation_text bug)."""
+    fig.add_hline(y=y, line_dash=line_dash, line_color=line_color)
+    fig.add_annotation(
+        x=1, y=y, xref="paper", yref="y",
+        text=label, showarrow=False,
+        xanchor="right", yanchor="bottom",
+    )
+    return fig
+
 @st.cache_data
 def load_data():
     sku = pd.read_csv("sku_master.csv")
@@ -456,7 +495,7 @@ with tab_exec:
                 line=dict(dash="dash", color="orange"),
                 mode="lines",
             )
-        fig_trend.add_vline(x=pd.to_datetime(latest_date), line_dash="dot", line_color="gray", annotation_text="기준일")
+        add_ref_vline(fig_trend, latest_date, "기준일", line_dash="dot", line_color="gray")
         fig_trend.update_layout(xaxis_title="일자", yaxis_title="수요량", legend_title=None)
         fig_trend.update_xaxes(tickformat="%Y-%m-%d")
         fig_trend.update_yaxes(tickformat=",.0f")
@@ -724,8 +763,8 @@ with tab_health:
             )
             fig_hist.update_layout(xaxis_title="재고 커버 일수(DOS)", yaxis_title="SKU 수")
             fig_hist.update_yaxes(tickformat=",.0f")
-            fig_hist.add_vline(x=shortage_days, line_dash="dash", line_color="crimson")
-            fig_hist.add_vline(x=over_days, line_dash="dash", line_color="steelblue")
+            add_ref_vline(fig_hist, shortage_days, f"부족 기준선({shortage_days}일)", line_dash="dash", line_color="crimson")
+            add_ref_vline(fig_hist, over_days, f"과잉 기준선({over_days}일)", line_dash="dash", line_color="steelblue")
             fig_hist = apply_plotly_theme(fig_hist)
             st.plotly_chart(fig_hist, use_container_width=True)
             st.caption(f"부족 비율(DOS<{shortage_days}일): {pct_short:.1f}% | 과잉 비율(DOS>{over_days}일): {pct_over:.1f}%")
@@ -762,8 +801,8 @@ with tab_health:
         )
         fig_scatter.update_yaxes(tickformat=",.0f")
         fig_scatter.update_xaxes(tickformat=",.0f")
-        fig_scatter.add_hline(y=y_cut, line_dash="dash", line_color="gray")
-        fig_scatter.add_vline(x=x_cut, line_dash="dash", line_color="gray")
+        add_ref_hline(fig_scatter, y_cut, f"부족 기준({shortage_days}일)", line_dash="dash", line_color="gray")
+        add_ref_vline(fig_scatter, x_cut, "80% 분위", line_dash="dash", line_color="gray")
         fig_scatter = apply_plotly_theme(fig_scatter)
         st.plotly_chart(fig_scatter, use_container_width=True)
         st.caption(
@@ -1191,7 +1230,7 @@ with tab_movements:
             fig_net.update_layout(xaxis_title="일자", yaxis_title="순변화 수량")
             fig_net.update_xaxes(tickformat="%Y-%m-%d")
             fig_net.update_yaxes(tickformat=",.0f")
-            fig_net.add_hline(y=0, line_dash="dash", line_color="gray")
+            add_ref_hline(fig_net, 0, "0", line_dash="dash", line_color="gray")
             fig_net = apply_plotly_theme(fig_net)
             st.plotly_chart(fig_net, use_container_width=True)
 
