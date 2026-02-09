@@ -242,7 +242,7 @@ st.sidebar.selectbox(
     key="sku_pick",
 )
 
-st.sidebar.header("수요 예측(Forecast) 설정")
+st.sidebar.header("예측 설정")
 horizon_opts = [7, 14, 30, 60]
 model_opts = ["MovingAvg(7)", "MovingAvg(14)", "MovingAvg(30)", "SeasonalNaive(7)"]
 lookback_opts = [90, 180, 365]
@@ -266,6 +266,7 @@ lookback_days = st.sidebar.selectbox(
     format_func=lambda x: f"{x}일",
     key="forecast_lookback_days",
 )
+st.sidebar.caption("Overview·리스크·발주에 반영")
 
 cat = st.session_state.get("cat", "ALL")
 wh = st.session_state.get("wh", "ALL")
@@ -301,7 +302,10 @@ tab_exec, tab_health, tab_stockout, tab_actions, tab_movements = st.tabs([
 
 with tab_exec:
     st.subheader("Overview")
-    st.caption("한눈에 보는 재고·수요 요약 — 어떤 구간이 부족/과잉인가?")
+    st.caption("현황 → 전망 → 액션. 한 화면에서 재고·수요 요약과 예측 전망·우선 조치를 확인합니다.")
+
+    # 예측 설정 한 줄 요약 (현재 선택값)
+    st.markdown(f"**예측 설정:** 모델 {model_type} · 학습 {lookback_days}일 · 예측 기간 {horizon_days}일")
 
     # 탭 내부 필터: 추이 조회기간(trend_days), DOS 산정 기준(dos_basis_days)
     ov_trend_opts = [30, 60, 90, 180, "ALL"]
@@ -382,6 +386,34 @@ with tab_exec:
 
     st.caption(f"※ DOS는 최근 {dos_basis_days}일 평균 일수요 기준. 부족/과잉은 14일·60일 기준.")
 
+    # 미래 전망(Forecast Outlook) KPI 3개
+    st.subheader("미래 전망(Forecast Outlook)")
+    if not forecast_daily.empty:
+        forecast_total = int(forecast_daily["forecast_qty"].sum())
+        latest_dt = pd.to_datetime(latest_date)
+        f7_cut = latest_dt + pd.Timedelta(days=7)
+        lead_days = st.session_state.get("lead_time_days", 7)
+        lead_cut = latest_dt + pd.Timedelta(days=lead_days)
+        f_daily = forecast_daily.copy()
+        f_daily["date"] = pd.to_datetime(f_daily["date"])
+        forecast_next7 = int(f_daily[f_daily["date"] <= f7_cut]["forecast_qty"].sum())
+        lead_time_total = int(f_daily[f_daily["date"] <= lead_cut]["forecast_qty"].sum())
+        horizon_cut = latest_dt + pd.Timedelta(days=horizon_days)
+        risk_in_horizon = 0
+        if not forecast_metrics_df.empty and "stockout_date_forecast" in forecast_metrics_df.columns:
+            fm = forecast_metrics_df[forecast_metrics_df["stockout_date_forecast"].notna()].copy()
+            fm["stockout_date_forecast"] = pd.to_datetime(fm["stockout_date_forecast"])
+            risk_in_horizon = int((fm["stockout_date_forecast"] <= horizon_cut).sum())
+        col_f1, col_f2, col_f3 = st.columns(3)
+        col_f1.metric(f"향후 {horizon_days}일 예상 수요 합", f"{forecast_total:,}")
+        col_f2.metric(
+            f"향후 {lead_days}일 예상 수요 합" + (" (리드타임)" if lead_days != 7 else ""),
+            f"{lead_time_total if lead_days != 7 else forecast_next7:,}",
+        )
+        col_f3.metric("예측 기준 품절 위험 SKU 수 (기간 내)", f"{risk_in_horizon:,}")
+    else:
+        st.caption("예측 데이터가 없습니다. 예측 설정(사이드바)과 공통 필터를 확인하세요.")
+
     # 추이: trend_days로 재조회
     trend_sql = f"""
     WITH base_sku AS (
@@ -414,7 +446,7 @@ with tab_exec:
     col_trend_demand, col_trend_inv = st.columns(2)
     with col_trend_demand:
         fig_trend = px.line(trend, x="date", y="demand_qty", title=f"수요 추이 (최근 {trend_days}일)" if trend_days != 365 else "수요 추이 (전체)")
-        # 향후 horizon_days 예측 수요 라인(점선) 추가
+        fig_trend.update_traces(name="실적 수요")
         if not forecast_daily.empty:
             forecast_agg = forecast_daily.groupby("date")["forecast_qty"].sum().reset_index()
             fig_trend.add_scatter(
@@ -424,7 +456,8 @@ with tab_exec:
                 line=dict(dash="dash", color="orange"),
                 mode="lines",
             )
-        fig_trend.update_layout(xaxis_title="일자", yaxis_title="수요량")
+        fig_trend.add_vline(x=pd.to_datetime(latest_date), line_dash="dot", line_color="gray", annotation_text="기준일")
+        fig_trend.update_layout(xaxis_title="일자", yaxis_title="수요량", legend_title=None)
         fig_trend.update_xaxes(tickformat="%Y-%m-%d")
         fig_trend.update_yaxes(tickformat=",.0f")
         fig_trend = apply_plotly_theme(fig_trend)
@@ -505,6 +538,72 @@ with tab_exec:
             st.plotly_chart(fig_cat_demand, use_container_width=True)
     else:
         st.caption("카테고리별 수요 비중: 전체 카테고리·전체 SKU 선택 시에만 표시됩니다.")
+
+    # 이번 기간 우선 조치 TOP 10 (예측 기반 추천 발주 로직 재사용)
+    st.subheader("이번 기간 우선 조치 TOP 10")
+    if not forecast_metrics_df.empty and not forecast_daily.empty:
+        lead_time_days_ov = st.session_state.get("lead_time_days", 7)
+        target_cover_days_ov = st.session_state.get("target_cover_days", 14)
+        safety_stock_days_ov = st.session_state.get("safety_stock_days", 3)
+        moq_ov = st.session_state.get("moq", 0)
+        actions_sql_ov = f"""
+        WITH base_sku AS (
+          SELECT m.sku, m.sku_name, m.category
+          FROM sku_master m
+          WHERE 1=1
+          {base_where}
+        ),
+        latest_inv AS (
+          SELECT sku, warehouse, onhand_qty
+          FROM inventory_daily
+          WHERE date = '{latest_date}'
+          {_inv_wh_where(wh)}
+        ),
+        base AS (
+          SELECT b.sku, b.sku_name, b.category, li.warehouse, COALESCE(li.onhand_qty, 0) AS onhand_qty
+          FROM base_sku b
+          LEFT JOIN latest_inv li ON b.sku = li.sku
+        )
+        SELECT sku, sku_name, category, warehouse, onhand_qty FROM base
+        """
+        actions_base_ov = con.execute(actions_sql_ov).fetchdf()
+        latest_dt_ov = pd.to_datetime(latest_date)
+        lead_cut_ov = latest_dt_ov + pd.Timedelta(days=lead_time_days_ov)
+        f_daily_ov = forecast_daily.copy()
+        f_daily_ov["date"] = pd.to_datetime(f_daily_ov["date"])
+        f_lead_ov = f_daily_ov[f_daily_ov["date"] <= lead_cut_ov].groupby("sku")["forecast_qty"].sum()
+        f_metrics_ov = forecast_metrics_df[["sku", "forecast_avg_daily", "forecast_dos", "stockout_date_forecast"]].drop_duplicates("sku")
+        actions_base_ov = actions_base_ov.merge(f_metrics_ov, on="sku", how="inner")
+        actions_base_ov["lead_time_forecast"] = actions_base_ov["sku"].map(lambda s: f_lead_ov.get(s, 0) if s in f_lead_ov.index else 0)
+        fa_ov = actions_base_ov["forecast_avg_daily"].fillna(0)
+        lt_f_ov = actions_base_ov["lead_time_forecast"].fillna(0)
+        target_stock_ov = (lt_f_ov + fa_ov * target_cover_days_ov + fa_ov * safety_stock_days_ov).round(0).astype(int)
+        onhand_ov = pd.to_numeric(actions_base_ov["onhand_qty"], errors="coerce").fillna(0)
+        rec_ov = (target_stock_ov - onhand_ov).clip(lower=0).astype(int)
+        if moq_ov > 0:
+            rec_ov = rec_ov.where(rec_ov <= 0, rec_ov.clip(lower=moq_ov)).astype(int)
+        actions_base_ov["target_stock"] = target_stock_ov
+        actions_base_ov["recommended_order_qty"] = rec_ov
+        actions_base_ov["estimated_stockout_date"] = actions_base_ov["stockout_date_forecast"]
+        actions_base_ov["coverage_days"] = actions_base_ov["forecast_dos"]
+        def reason_ov(row):
+            if pd.notna(row["coverage_days"]) and row["coverage_days"] < target_cover_days_ov:
+                return "예측 품절 임박"
+            if row["onhand_qty"] < row["target_stock"]:
+                return "리드타임 수요 대비 부족"
+            return "정책 보충"
+        actions_base_ov["reason"] = actions_base_ov.apply(reason_ov, axis=1)
+        top10 = actions_base_ov[actions_base_ov["recommended_order_qty"] > 0].copy()
+        top10 = top10.sort_values(["estimated_stockout_date", "recommended_order_qty"], ascending=[True, False], na_position="last").head(10)
+        display_top10 = top10[["sku", "sku_name", "warehouse", "estimated_stockout_date", "coverage_days", "recommended_order_qty", "reason"]].copy()
+        display_top10 = display_top10.rename(columns={"estimated_stockout_date": "예상 품절일(예측)", "coverage_days": "DOS(예측)"})
+        if display_top10.empty:
+            st.caption("추천 발주 대상이 없습니다.")
+        else:
+            st.dataframe(display_top10, use_container_width=True)
+            st.caption("발주·조치 제안 탭에서 정책(리드타임·목표커버·MOQ) 변경 후 전체 목록 확인.")
+    else:
+        st.caption("예측 결과가 있을 때만 표시됩니다.")
 
 with tab_health:
     st.subheader("재고 건전성 분석")
@@ -613,7 +712,7 @@ with tab_health:
         st.metric("적정 SKU 수", f"{cnt_ok:,}")
     with row_c2:
         st.metric("과잉 SKU 수", f"{cnt_over:,}")
-        st.metric(f"최근 {health_dos_basis_days}일 수요 0 SKU 수", f"{cnt_nodemand:,}")
+        st.metric(f"최근 {health_dos_basis_days}일 수요 없음(0) SKU 수", f"{cnt_nodemand:,}")
     with row_hist:
         if not health_with_dos.empty:
             fig_hist = px.histogram(
@@ -631,9 +730,9 @@ with tab_health:
             st.plotly_chart(fig_hist, use_container_width=True)
             st.caption(f"부족 비율(DOS<{shortage_days}일): {pct_short:.1f}% | 과잉 비율(DOS>{over_days}일): {pct_over:.1f}%")
         else:
-            st.caption("DOS 데이터 없음 (전체 수요0 또는 필터 결과 없음)")
+            st.caption(f"DOS 데이터 없음 (전체 최근 {health_dos_basis_days}일 수요 없음(0) 또는 필터 결과 없음)")
 
-    # 우선순위 매트릭스(고수요×부족): X=demand_30d(80% 분위), Y=DOS(shortage_days 기준선), 수요0 제외
+    # 우선순위 매트릭스(고수요×부족): X=demand_30d(80% 분위), Y=DOS(shortage_days 기준선), 수요 없음 구간 제외
     if not health_with_dos.empty:
         health_demand_cut = 0.8
         x_cut = float(health_with_dos["demand_30d"].quantile(health_demand_cut))
@@ -676,16 +775,17 @@ with tab_health:
     else:
         st.caption("산점도: DOS가 있는 SKU가 없어 표시하지 않습니다.")
 
-    # 드릴다운 테이블: bucket 멀티셀렉트(기본 부족·과잉), 정렬 bucket(부족→과잉→적정→수요0) → DOS 오름차순
+    # 드릴다운 테이블: bucket 멀티셀렉트(기본 부족·과잉), 정렬 bucket(부족→과잉→적정→수요 없음) → DOS 오름차순
     st.subheader("드릴다운 테이블")
     bucket_order = {"부족": 0, "과잉": 1, "적정": 2, "수요0": 3}
     health["_bucket_order"] = health["bucket"].map(bucket_order)
-
+    _nodemand_label = f"최근 {health_dos_basis_days}일 수요 없음(0)"
     bucket_options = ["부족", "과잉", "적정", "수요0"]
     selected_buckets = st.multiselect(
-        "구간(bucket)",
+        "구간",
         options=bucket_options,
         default=["부족", "과잉"],
+        format_func=lambda x: _nodemand_label if x == "수요0" else x,
         key="health_bucket_filter",
     )
     if not selected_buckets:
@@ -695,6 +795,7 @@ with tab_health:
     display_health = display_health[
         ["sku", "sku_name", "category", "warehouse", "onhand_qty", "demand_30d", "avg_daily_demand_Nd", "coverage_days", "bucket"]
     ].drop(columns=["_bucket_order"], errors="ignore")
+    display_health["bucket"] = display_health["bucket"].replace("수요0", _nodemand_label)
     st.dataframe(display_health, use_container_width=True)
 
 with tab_stockout:
