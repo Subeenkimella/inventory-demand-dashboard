@@ -430,8 +430,8 @@ tab_exec, tab_health, tab_stockout, tab_actions, tab_movements = st.tabs([
 ])
 
 with tab_exec:
-    st.subheader("30초 상황판")
-    st.caption("한눈에 보는 재고·수요 요약. 조회 기간은 추이 차트에만 적용됩니다.")
+    st.subheader("Overview")
+    st.caption("한눈에 보는 재고·수요 요약")
 
     # 탭 내부 필터 1개: 조회 기간(일) — 수요/재고 추이 INTERVAL에 사용
     st.selectbox(
