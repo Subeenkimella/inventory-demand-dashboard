@@ -812,6 +812,7 @@ with tab_movements:
     if inv_txn is None or len(inv_txn) == 0:
         st.info("inventory_txn 데이터가 없거나 비어 있습니다. CSV를 추가하면 입출고 차트와 트랜잭션 테이블이 표시됩니다.")
     else:
+        # 기간 필터: 탭 내부에서 선택 (mv_range_days, 기본 60)
         mov_range_days = st.selectbox(
             "분석 기간(일)",
             options=[7, 14, 30, 60, 90],
@@ -819,7 +820,8 @@ with tab_movements:
             format_func=lambda x: f"{x}일",
             key="mov_range_days",
         )
-        # 1) 입출고 집계 (dt/qty 강제 캐스팅, mov_range_days)
+
+        # 입출고 집계 (dt/qty 강제 캐스팅, mov_range_days)
         txn_trend_sql = f"""
         WITH filtered AS (
           SELECT
@@ -843,10 +845,30 @@ with tab_movements:
         txn_trend = con.execute(txn_trend_sql).fetchdf()
         sum_in = txn_trend["in_qty"].fillna(0).sum() if not txn_trend.empty else 0
         sum_out = txn_trend["out_qty"].fillna(0).sum() if not txn_trend.empty else 0
-        has_data = (sum_in != 0 or sum_out != 0) and not txn_trend.empty
 
-        if not has_data:
-            st.warning("필터 조건 내 입출고 합계(in_qty/out_qty)가 0이거나 데이터가 없습니다. 기간·창고·SKU·카테고리 필터를 확인하거나, qty가 0이 아닌 트랜잭션이 있는지 확인하세요.")
+        # 필터 반영 후 트랜잭션 row 수 (동일 조건 COUNT)
+        txn_count_sql = f"""
+        SELECT COUNT(*) AS cnt
+        FROM inventory_txn t
+        WHERE CAST(COALESCE(t.date, CAST(t.txn_datetime AS DATE)) AS DATE)
+              BETWEEN '{latest_date}'::DATE - INTERVAL {mov_range_days} DAY AND '{latest_date}'::DATE
+          {"AND t.warehouse = '"+wh+"'" if wh!="ALL" else ""}
+          {"AND t.sku = '"+sku_pick+"'" if sku_pick!="ALL" else ""}
+          {"AND EXISTS (SELECT 1 FROM sku_master m WHERE m.sku = t.sku AND m.category = '"+cat+"')" if cat!="ALL" else ""}
+        """
+        txn_row_count = int(con.execute(txn_count_sql).fetchone()[0])
+
+        # 1) 진단 카드 3개: 필터 반영 row 수, in_qty 합, out_qty 합
+        st.caption("진단 (필터 반영)")
+        col_diag1, col_diag2, col_diag3 = st.columns(3)
+        col_diag1.metric("트랜잭션 row 수", f"{txn_row_count:,}")
+        col_diag2.metric("in_qty 합", f"{sum_in:,.0f}")
+        col_diag3.metric("out_qty 합", f"{sum_out:,.0f}")
+
+        # 2) has_data 완화: row 수 > 0 이면 차트 그림. 0인 쪽은 0 bar로 표시. 빈 경우에만 경고
+        has_rows = not txn_trend.empty
+        if not has_rows:
+            st.warning("필터 조건 내 집계된 일자(row)가 없습니다. 기간·창고·SKU·카테고리 필터를 완화하거나, 해당 기간에 트랜잭션이 있는지 확인하세요.")
         else:
             col_in, col_out = st.columns(2)
             with col_in:
