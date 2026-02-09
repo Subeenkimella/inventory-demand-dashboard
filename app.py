@@ -765,7 +765,15 @@ with tab_actions:
     actions_base["target_stock"] = target_stock
     actions_base["recommended_order_qty"] = recommended_order_qty
 
-    # 3) recommended_order_qty > 0 만 표시, 정렬: coverage_days ASC, recommended_order_qty DESC
+    # 3) reason 컬럼: 왜 이 SKU가 추천됐는지
+    def assign_reason(row):
+        if pd.notna(row["coverage_days"]) and row["coverage_days"] < target_cover_days:
+            return "커버리지 부족"
+        if row["onhand_qty"] < row["target_stock"]:
+            return "목표 재고 미달"
+        return "기타"
+
+    actions_base["reason"] = actions_base.apply(assign_reason, axis=1)
     actions_display = actions_base[actions_base["recommended_order_qty"] > 0].copy()
     actions_display = actions_display.sort_values(
         ["coverage_days", "recommended_order_qty"],
@@ -773,17 +781,29 @@ with tab_actions:
         na_position="last",
     )
 
-    # 4) 테이블 열 (단위/콤마 포맷은 st.dataframe이 숫자 컬럼 자동 포맷, 또는 column_config 사용)
+    # 4) reason 필터 (기본: 커버리지 부족, 목표 재고 미달)
+    reason_options = ["커버리지 부족", "목표 재고 미달", "기타"]
+    selected_reasons = st.multiselect(
+        "추천 사유 (reason)",
+        options=reason_options,
+        default=["커버리지 부족", "목표 재고 미달"],
+        key="actions_reason_filter",
+    )
+    if not selected_reasons:
+        selected_reasons = reason_options
+    actions_filtered = actions_display[actions_display["reason"].isin(selected_reasons)].copy()
+
+    # 5) 테이블: reason 포함, 정렬 coverage_days ASC(null last), recommended_order_qty DESC
     st.subheader("추천 발주 테이블")
-    display_cols = ["sku", "sku_name", "category", "warehouse", "onhand_qty", "avg_daily_demand_14d", "coverage_days", "target_stock", "recommended_order_qty"]
-    out = actions_display[display_cols].copy()
+    display_cols = ["sku", "sku_name", "category", "warehouse", "reason", "onhand_qty", "avg_daily_demand_14d", "coverage_days", "target_stock", "recommended_order_qty"]
+    out = actions_filtered[display_cols].copy()
     out["onhand_qty"] = out["onhand_qty"].apply(lambda x: f"{int(x):,}" if pd.notna(x) else "0")
     out["avg_daily_demand_14d"] = out["avg_daily_demand_14d"].apply(lambda x: f"{float(x):,.1f}" if pd.notna(x) else "0")
     out["coverage_days"] = out["coverage_days"].apply(lambda x: f"{float(x):,.1f}" if pd.notna(x) else "—")
     out["target_stock"] = out["target_stock"].apply(lambda x: f"{int(x):,}")
     out["recommended_order_qty"] = out["recommended_order_qty"].apply(lambda x: f"{int(x):,}")
     st.dataframe(out, use_container_width=True)
-    st.caption("recommended_order_qty > 0 인 SKU만 표시. 정렬: coverage_days ASC, recommended_order_qty DESC.")
+    st.caption("recommended_order_qty > 0 인 SKU만 표시. 정렬: coverage_days ASC(null last), recommended_order_qty DESC.")
 
 with tab_movements:
     st.subheader("재고 입·출고 이력")
