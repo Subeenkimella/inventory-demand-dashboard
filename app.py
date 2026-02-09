@@ -104,8 +104,9 @@ st.sidebar.selectbox(
 cat = st.session_state.get("cat", "ALL")
 wh = st.session_state.get("wh", "ALL")
 sku_pick = st.session_state.get("sku_pick", "ALL")
-# Overview: 조회 기간만 탭 필터(ov_range_days), 트렌드 INTERVAL에 사용. KPI는 7일 수요·고정 기준 사용.
-range_days = st.session_state.get("ov_range_days", 60)
+# Overview: 조회 기간만 탭 필터(ov_range_days), 트렌드 INTERVAL에 사용. "전체" 선택 시 365일.
+_ov = st.session_state.get("ov_range_days", 60)
+range_days = 365 if _ov == "ALL" else _ov
 risk_threshold_days = 14
 overstock_threshold_days = 60
 # --- Executive Overview KPIs (Tab1) ---
@@ -433,12 +434,13 @@ with tab_exec:
     st.subheader("Overview")
     st.caption("한눈에 보는 재고·수요 요약")
 
-    # 탭 내부 필터 1개: 조회 기간(일) — 수요/재고 추이 INTERVAL에 사용
+    # 탭 내부 필터 1개: 조회 기간(일) — 수요/재고 추이 INTERVAL에 사용. "전체" = 365일
+    ov_range_opts = ["ALL", 7, 14, 30, 60, 90]
     st.selectbox(
         "조회 기간(일)",
-        options=[7, 14, 30, 60, 90],
-        index=[7, 14, 30, 60, 90].index(st.session_state.get("ov_range_days", 60)) if st.session_state.get("ov_range_days", 60) in [7, 14, 30, 60, 90] else 3,
-        format_func=lambda x: f"{x}일",
+        options=ov_range_opts,
+        index=ov_range_opts.index(st.session_state.get("ov_range_days", 60)) if st.session_state.get("ov_range_days", 60) in ov_range_opts else 4,
+        format_func=lambda x: "전체" if x == "ALL" else f"{x}일",
         key="ov_range_days",
     )
 
@@ -459,14 +461,14 @@ with tab_exec:
 
     col_trend_demand, col_trend_inv = st.columns(2)
     with col_trend_demand:
-        fig_trend = px.line(trend, x="date", y="demand_qty", title=f"수요 추이 (최근 {range_days}일)")
+        fig_trend = px.line(trend, x="date", y="demand_qty", title=f"수요 추이 (최근 {range_days}일)" if range_days != 365 else "수요 추이 (전체)")
         fig_trend.update_layout(xaxis_title="일자", yaxis_title="수요량")
         fig_trend.update_xaxes(tickformat="%Y-%m-%d")
         fig_trend.update_yaxes(tickformat=",.0f")
         fig_trend = apply_plotly_theme(fig_trend)
         st.plotly_chart(fig_trend, use_container_width=True)
     with col_trend_inv:
-        fig_inv_trend = px.line(inv_trend, x="date", y="onhand_qty", title=f"재고 추이 (최근 {range_days}일)")
+        fig_inv_trend = px.line(inv_trend, x="date", y="onhand_qty", title=f"재고 추이 (최근 {range_days}일)" if range_days != 365 else "재고 추이 (전체)")
         fig_inv_trend.update_layout(xaxis_title="일자", yaxis_title="재고 수량")
         fig_inv_trend.update_xaxes(tickformat="%Y-%m-%d")
         fig_inv_trend.update_yaxes(tickformat=",.0f")
