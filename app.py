@@ -419,9 +419,8 @@ lookback_days = st.sidebar.selectbox(
     format_func=lambda x: f"{x}일",
     key="forecast_lookback_days",
 )
-st.sidebar.divider()
-show_only_exceptions = st.sidebar.toggle("예외만 보기", value=True, key="show_only_exceptions", help="ON이면 부족·과잉·품절 위험 행만 표시")
-sku_search_term = st.sidebar.text_input("SKU 검색(명·코드)", value=st.session_state.get("sku_search_term", ""), key="sku_search_term", placeholder="테이블에서 SKU로 필터")
+show_only_exceptions = True
+sku_search_term = ""
 cat = st.session_state.get("cat", "ALL")
 wh = st.session_state.get("wh", "ALL")
 sku_pick = st.session_state.get("sku_pick", "ALL")
