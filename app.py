@@ -401,11 +401,16 @@ horizon_days = st.sidebar.selectbox(
     format_func=lambda x: f"{x}일",
     key="forecast_horizon_days",
 )
+_model_help = (
+    "MovingAvg(N): 최근 N일 수요 평균으로 일별 예측. 단순·안정적.\n\n"
+    "SeasonalNaive(N): 최근 N일 패턴을 일별로 반복. 주간 계절성에 적합."
+)
 model_type = st.sidebar.selectbox(
     "예측 모델",
     options=model_opts,
     index=model_opts.index(st.session_state.get("forecast_model_type", "MovingAvg(14)")) if st.session_state.get("forecast_model_type", "MovingAvg(14)") in model_opts else 1,
     key="forecast_model_type",
+    help=_model_help,
 )
 lookback_days = st.sidebar.selectbox(
     "학습 구간(일)",
@@ -701,10 +706,6 @@ with tab_exec:
                 confidence_hint = "낮음"
         else:
             confidence_hint = "—"
-        with st.expander("모델 설명"):
-            st.write("**MovingAvg(N):** 최근 N일 수요 평균으로 일별 예측. 단순·안정적.")
-            st.write("**SeasonalNaive(N):** 최근 N일 패턴을 일별로 반복. 주간 계절성에 적합.")
-            st.write(f"**학습 구간:** 최근 {lookback_days}일. **마지막 사용일:** {fmt_date(latest_date)}.")
         forecast_total = int(forecast_daily["forecast_qty"].sum())
         latest_dt = pd.to_datetime(latest_date)
         f7_cut = latest_dt + pd.Timedelta(days=7)
