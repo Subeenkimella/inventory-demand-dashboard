@@ -690,8 +690,9 @@ with tab_health:
 
 with tab_stockout:
     st.subheader("품절 리스크 분석")
-    st.caption("DOS(재고 소진 예상일수) = 현재 재고 / 최근 14일 평균 일수요 | Risk Level: Critical 0~3일, High 3~7일, Medium 7~14일, Low 14일 이상")
+    st.caption("리스트/일정 중심. DOS(재고 소진 예상일수) = 현재 재고 / 최근 14일 평균 일수요.")
 
+    # 1) 탭 내부 필터 2개
     risk_period_options = [7, 14, 21, 30, 60]
     risk_period_days = st.selectbox(
         "재고 소진 기준(일수)",
@@ -712,31 +713,29 @@ with tab_stockout:
     if risk_level_filter != "전체":
         risk_filtered = risk_filtered[risk_filtered["risk_level"] == risk_level_filter]
 
-    # 상단 KPI: Critical/High/Medium/Low SKU 수, 리스크 재고 수량 합, 예상 소진일 Top10 평균
-    cnt_critical = int((risk_filtered["risk_level"] == "Critical").sum())
-    cnt_high = int((risk_filtered["risk_level"] == "High").sum())
-    cnt_medium = int((risk_filtered["risk_level"] == "Medium").sum())
-    cnt_low = int((risk_filtered["risk_level"] == "Low").sum())
+    # 2) KPI 3개: 리스크 SKU 수, 리스크 재고 수량 합, 평균 예상 소진일(DOS) 상위 10개 평균
+    risk_sku_cnt = len(risk_filtered)
     risk_onhand_sum = int(risk_filtered["onhand_qty"].sum()) if not risk_filtered.empty else 0
     top10_coverage = risk_filtered.nsmallest(10, "coverage_days")["coverage_days"]
     avg_top10 = float(top10_coverage.mean()) if len(top10_coverage) > 0 else None
 
-    col_c, col_h, col_m, col_l, col_sum, col_avg = st.columns(6)
-    col_c.metric("Critical SKU 수", f"{cnt_critical:,}")
-    col_h.metric("High SKU 수", f"{cnt_high:,}")
-    col_m.metric("Medium SKU 수", f"{cnt_medium:,}")
-    col_l.metric("Low SKU 수", f"{cnt_low:,}")
-    col_sum.metric("리스크 재고 수량 합", f"{risk_onhand_sum:,}")
-    col_avg.metric("예상 소진일 Top10 평균(일)", f"{avg_top10:,.1f}" if avg_top10 is not None else "—")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("리스크 SKU 수", f"{risk_sku_cnt:,}")
+    col2.metric("리스크 재고 수량 합", f"{risk_onhand_sum:,}")
+    col3.metric("평균 예상 소진일(DOS)", f"{avg_top10:,.1f}일" if avg_top10 is not None else "—")
 
-    # 리스크 테이블: coverage_days NOT NULL AND coverage_days < risk_period_days, risk_level 적용
+    # 3) 테이블: 액션형 컬럼 순서
     st.subheader("리스크 테이블")
-    display_risk = risk_filtered[
-        ["sku", "sku_name", "category", "warehouse", "onhand_qty", "avg_daily_demand_14d", "coverage_days", "estimated_stockout_date", "demand_7d", "risk_level"]
-    ].copy()
+    display_cols = [
+        "sku", "sku_name", "category", "warehouse",
+        "coverage_days", "estimated_stockout_date",
+        "onhand_qty", "avg_daily_demand_14d", "demand_7d",
+        "risk_level",
+    ]
+    display_risk = risk_filtered[display_cols].copy()
     display_risk = display_risk.sort_values("coverage_days", ascending=True)
     st.dataframe(display_risk, use_container_width=True)
-    st.caption("DOS(재고 소진 예상일수) 기준 리스크 구간만 표시. estimated_stockout_date = 기준일 + CEIL(DOS)일.")
+    st.caption("DOS 기준 리스크 구간만 표시. estimated_stockout_date = 기준일 + CEIL(DOS)일.")
 
 with tab_actions:
     st.subheader("발주·조치 제안")
