@@ -436,9 +436,7 @@ forecast_metrics_df = pd.DataFrame()
 if not forecast_daily.empty and not latest_inv_df.empty:
     forecast_metrics_df = compute_forecast_metrics(forecast_daily, latest_inv_df, horizon_days, latest_date)
 
-# --- Ops Header ---
-st.markdown("---")
-st.markdown(f"**기준일** `{fmt_date(latest_date)}`")
+# --- Ops Header: 선택 필터 요약 (오른쪽 상단 박스) ---
 filter_parts = []
 if cat != "ALL":
     filter_parts.append(f"카테고리: {category_map.get(cat, cat)}")
@@ -446,8 +444,27 @@ if wh != "ALL":
     filter_parts.append(f"창고: {warehouse_map.get(wh, wh)}")
 if sku_pick != "ALL":
     filter_parts.append(f"SKU: {sku_pick}")
-st.caption(" · ".join(filter_parts) if filter_parts else "필터 없음 (전체 카테고리·창고·SKU)")
-st.caption(f"예측: {model_type} · 학습 {lookback_days}일 · 예측 기간 {horizon_days}일")
+filter_line = " · ".join(filter_parts) if filter_parts else "필터 없음 (전체 카테고리·창고·SKU)"
+forecast_line = f"예측: {model_type} · 학습 {lookback_days}일 · 예측 기간 {horizon_days}일"
+box_content = f"""
+<div style="
+  padding: 0.5rem 0.75rem;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  color: #495057;
+  line-height: 1.45;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+">
+  <div><strong>기준일</strong> {fmt_date(latest_date)}</div>
+  <div style="margin-top: 0.25rem;">{filter_line}</div>
+  <div style="margin-top: 0.2rem;">{forecast_line}</div>
+</div>
+"""
+col_spacer, col_box = st.columns([3, 1])
+with col_box:
+    st.markdown(box_content, unsafe_allow_html=True)
 st.markdown("---")
 
 # Lightweight counts for "Recommended next step" (fixed dos_basis=14)
