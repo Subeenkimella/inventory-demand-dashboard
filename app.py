@@ -366,57 +366,6 @@ def assign_risk_level(days):
 
 risk["risk_level"] = risk["coverage_days"].apply(assign_risk_level)
 
-# --- 재고 건전성 분석 Tab: health 테이블 (demand_30d, coverage_days, warehouse 포함) ---
-health_sql = f"""
-WITH base_sku AS (
-  SELECT m.sku, m.sku_name, m.category
-  FROM sku_master m
-  WHERE 1=1
-    {"AND m.category = '"+cat+"'" if cat!="ALL" else ""}
-    {"AND m.sku = '"+sku_pick+"'" if sku_pick!="ALL" else ""}
-    {"AND EXISTS (SELECT 1 FROM inventory_daily i WHERE i.sku = m.sku AND i.warehouse = '"+wh+"')" if wh!="ALL" else ""}
-),
-latest_inv AS (
-  SELECT sku, warehouse, onhand_qty
-  FROM inventory_daily
-  WHERE date = '{latest_date}'
-    {"AND warehouse = '"+wh+"'" if wh!="ALL" else ""}
-),
-demand_30d_cte AS (
-  SELECT sku, SUM(demand_qty) AS demand_30d
-  FROM demand_daily
-  WHERE date > '{latest_date}'::DATE - INTERVAL 30 DAY AND date <= '{latest_date}'
-  GROUP BY sku
-),
-avg_daily_demand AS (
-  SELECT sku, AVG(demand_qty) AS avg_daily_demand_14d
-  FROM demand_daily
-  WHERE date > '{latest_date}'::DATE - INTERVAL 14 DAY AND date <= '{latest_date}'
-  GROUP BY sku
-),
-base AS (
-  SELECT
-    b.sku, b.sku_name, b.category,
-    li.warehouse,
-    COALESCE(li.onhand_qty, 0) AS onhand_qty,
-    COALESCE(d30.demand_30d, 0) AS demand_30d,
-    COALESCE(ad.avg_daily_demand_14d, 0) AS avg_daily_demand_14d,
-    CASE
-      WHEN COALESCE(ad.avg_daily_demand_14d, 0) = 0 THEN NULL
-      ELSE ROUND(COALESCE(li.onhand_qty, 0) / ad.avg_daily_demand_14d, 1)
-    END AS coverage_days
-  FROM base_sku b
-  LEFT JOIN latest_inv li ON b.sku = li.sku
-  LEFT JOIN demand_30d_cte d30 ON b.sku = d30.sku
-  LEFT JOIN avg_daily_demand ad ON b.sku = ad.sku
-)
-SELECT sku, sku_name, category, warehouse, onhand_qty, demand_30d, avg_daily_demand_14d, coverage_days
-FROM base
-ORDER BY coverage_days ASC NULLS LAST
-"""
-health = con.execute(health_sql).fetchdf()
-health["risk_level"] = health["coverage_days"].apply(assign_risk_level)
-
 # --- Reorder Suggestions Table (Reorder Tab) ---
 reorder_sql = f"""
 WITH base_sku AS (
@@ -552,85 +501,191 @@ with tab_exec:
 
 with tab_health:
     st.subheader("재고 건전성 분석")
-    st.caption("재고 부족/적정/과잉 구조 파악")
+    st.caption("부족/적정/과잉이 얼마나 있고, 어떤 SKU가 문제인가?")
 
-    health_over_days = st.selectbox(
-        "과잉재고 기준(일) — 2x2 매트릭스 Y축",
-        options=[30, 60, 90, 120],
-        index=[30, 60, 90, 120].index(st.session_state.get("health_over_days", 60)) if st.session_state.get("health_over_days", 60) in [30, 60, 90, 120] else 1,
-        format_func=lambda x: f"{x}일 초과",
-        key="health_over_days",
+    # A) 탭 내부 필터 3개 (health_* prefix)
+    col_dos_basis, col_risk, col_over = st.columns(3)
+    with col_dos_basis:
+        health_dos_basis_days = st.selectbox(
+            "DOS 산정 기준 기간(일)",
+            options=[7, 14, 30],
+            index=[7, 14, 30].index(st.session_state.get("health_dos_basis_days", 14)) if st.session_state.get("health_dos_basis_days", 14) in [7, 14, 30] else 1,
+            format_func=lambda x: f"{x}일",
+            key="health_dos_basis_days",
+        )
+    with col_risk:
+        health_risk_days = st.selectbox(
+            "부족 기준선(일)",
+            options=[7, 14, 21, 30],
+            index=[7, 14, 21, 30].index(st.session_state.get("health_risk_days", 14)) if st.session_state.get("health_risk_days", 14) in [7, 14, 21, 30] else 1,
+            format_func=lambda x: f"{x}일 미만",
+            key="health_risk_days",
+        )
+    with col_over:
+        health_over_days = st.selectbox(
+            "과잉 기준선(일)",
+            options=[30, 60, 90, 120],
+            index=[30, 60, 90, 120].index(st.session_state.get("health_over_days", 60)) if st.session_state.get("health_over_days", 60) in [30, 60, 90, 120] else 1,
+            format_func=lambda x: f"{x}일 초과",
+            key="health_over_days",
+        )
+
+    # Health SQL (탭 내부 실행, dos_basis_days 반영)
+    health_sql_tab = f"""
+    WITH base_sku AS (
+      SELECT m.sku, m.sku_name, m.category
+      FROM sku_master m
+      WHERE 1=1
+        {"AND m.category = '"+cat+"'" if cat!="ALL" else ""}
+        {"AND m.sku = '"+sku_pick+"'" if sku_pick!="ALL" else ""}
+        {"AND EXISTS (SELECT 1 FROM inventory_daily i WHERE i.sku = m.sku AND i.warehouse = '"+wh+"')" if wh!="ALL" else ""}
+    ),
+    latest_inv AS (
+      SELECT sku, warehouse, onhand_qty
+      FROM inventory_daily
+      WHERE date = '{latest_date}'
+        {"AND warehouse = '"+wh+"'" if wh!="ALL" else ""}
+    ),
+    demand_30d_cte AS (
+      SELECT sku, SUM(demand_qty) AS demand_30d
+      FROM demand_daily
+      WHERE date > '{latest_date}'::DATE - INTERVAL 30 DAY AND date <= '{latest_date}'
+      GROUP BY sku
+    ),
+    avg_daily_demand AS (
+      SELECT sku, AVG(demand_qty) AS avg_daily_demand_Nd
+      FROM demand_daily
+      WHERE date > '{latest_date}'::DATE - INTERVAL {health_dos_basis_days} DAY AND date <= '{latest_date}'
+      GROUP BY sku
+    ),
+    base AS (
+      SELECT
+        b.sku, b.sku_name, b.category,
+        li.warehouse,
+        COALESCE(li.onhand_qty, 0) AS onhand_qty,
+        COALESCE(d30.demand_30d, 0) AS demand_30d,
+        COALESCE(ad.avg_daily_demand_Nd, 0) AS avg_daily_demand_Nd,
+        CASE
+          WHEN COALESCE(ad.avg_daily_demand_Nd, 0) = 0 THEN NULL
+          ELSE ROUND(COALESCE(li.onhand_qty, 0) / ad.avg_daily_demand_Nd, 1)
+        END AS coverage_days
+      FROM base_sku b
+      LEFT JOIN latest_inv li ON b.sku = li.sku
+      LEFT JOIN demand_30d_cte d30 ON b.sku = d30.sku
+      LEFT JOIN avg_daily_demand ad ON b.sku = ad.sku
     )
+    SELECT sku, sku_name, category, warehouse, onhand_qty, demand_30d, avg_daily_demand_Nd, coverage_days
+    FROM base
+    ORDER BY coverage_days ASC NULLS LAST
+    """
+    health = con.execute(health_sql_tab).fetchdf()
 
-    # A. 무수요 SKU 수 카드 + DOS 분포 히스토그램
-    no_demand_cnt = int(health["coverage_days"].isna().sum())
+    def assign_bucket(row):
+        cd = row["coverage_days"]
+        if pd.isna(cd):
+            return "무수요"
+        if cd < health_risk_days:
+            return "부족"
+        if cd > health_over_days:
+            return "과잉"
+        return "적정"
+
+    health["bucket"] = health.apply(assign_bucket, axis=1)
     health_with_dos = health[health["coverage_days"].notna()].copy()
 
-    row_cards, row_hist = st.columns([1, 3])
-    with row_cards:
-        st.metric("무수요 SKU 수", f"{no_demand_cnt:,}")
+    # B) 구간별 SKU 수 카드 4개 + DOS 분포 히스토그램(기준선 2개)
+    cnt_short = int((health["bucket"] == "부족").sum())
+    cnt_ok = int((health["bucket"] == "적정").sum())
+    cnt_over = int((health["bucket"] == "과잉").sum())
+    cnt_nodemand = int((health["bucket"] == "무수요").sum())
+
+    row_c1, row_c2, row_hist = st.columns([1, 1, 2])
+    with row_c1:
+        st.metric("부족 SKU 수", f"{cnt_short:,}")
+        st.metric("적정 SKU 수", f"{cnt_ok:,}")
+    with row_c2:
+        st.metric("과잉 SKU 수", f"{cnt_over:,}")
+        st.metric("무수요 SKU 수", f"{cnt_nodemand:,}")
     with row_hist:
         if not health_with_dos.empty:
             fig_hist = px.histogram(
                 health_with_dos,
                 x="coverage_days",
                 nbins=min(40, max(10, len(health_with_dos) // 3)),
-                title="커버리지(DOS) 분포",
-                labels={"coverage_days": "Coverage Days (DOS)"},
+                title="DOS 분포 (기준선: 부족/과잉)",
+                labels={"coverage_days": "재고 커버리지(DOS, 일)"},
             )
-            fig_hist.update_layout(xaxis_title="Coverage Days (DOS)", yaxis_title="SKU 수")
+            fig_hist.update_layout(xaxis_title="재고 커버리지(DOS, 일)", yaxis_title="SKU 수")
             fig_hist.update_yaxes(tickformat=",.0f")
+            fig_hist.add_vline(x=health_risk_days, line_dash="dash", line_color="crimson")
+            fig_hist.add_vline(x=health_over_days, line_dash="dash", line_color="steelblue")
             fig_hist = apply_plotly_theme(fig_hist)
             st.plotly_chart(fig_hist, use_container_width=True)
         else:
             st.caption("DOS 데이터 없음 (전체 무수요 또는 필터 결과 없음)")
 
-    # B. 2x2 매트릭스(산점도): X=demand_30d, Y=coverage_days
-    scatter_df = health_with_dos.copy()
-    scatter_df["dos"] = scatter_df["coverage_days"]
-
-    if not scatter_df.empty:
-        med_demand_30d = float(scatter_df["demand_30d"].median())
-        y_threshold = health_over_days
+    # C) 2x2 매트릭스 현업형: X=demand_30d(80pct 기준선), Y=coverage_days(health_risk_days 기준선), size=demand_30d, color=bucket
+    if not health_with_dos.empty:
+        health_demand_cut = 0.8
+        x_cut = float(health_with_dos["demand_30d"].quantile(health_demand_cut))
+        y_cut = health_risk_days
 
         fig_scatter = px.scatter(
-            scatter_df,
+            health_with_dos,
             x="demand_30d",
             y="coverage_days",
+            size="demand_30d",
+            color="bucket",
+            color_discrete_map={"부족": "#e74c3c", "적정": "#2ecc71", "과잉": "#3498db"},
             hover_data={
                 "sku": True,
                 "sku_name": True,
                 "category": True,
                 "onhand_qty": ",.0f",
                 "demand_30d": ",.0f",
-                "dos": ",.1f",
+                "coverage_days": ",.1f",
+                "bucket": True,
             },
-            title="수요 vs 커버리지 (2x2 매트릭스)",
+            title="SKU 우선순위 매트릭스 (고수요 × 부족재고)",
         )
         fig_scatter.update_layout(
-            xaxis_title="최근 30일 수요 합 (SKU)",
-            yaxis_title="Coverage Days (DOS)",
+            xaxis_title="최근 30일 수요(개)",
+            yaxis_title="재고 커버리지(DOS, 일)",
         )
         fig_scatter.update_yaxes(tickformat=",.0f")
         fig_scatter.update_xaxes(tickformat=",.0f")
-        fig_scatter.add_hline(y=y_threshold, line_dash="dash", line_color="gray")
-        fig_scatter.add_vline(x=med_demand_30d, line_dash="dash", line_color="gray")
+        fig_scatter.add_hline(y=y_cut, line_dash="dash", line_color="gray")
+        fig_scatter.add_vline(x=x_cut, line_dash="dash", line_color="gray")
         fig_scatter = apply_plotly_theme(fig_scatter)
         st.plotly_chart(fig_scatter, use_container_width=True)
         st.caption(
-            f"4분면: X 기준 = demand_30d 중앙값({med_demand_30d:,.0f}), "
-            f"Y 기준 = 과잉재고 기준({y_threshold}일). "
-            "좌하=저수요·저커버리지, 좌상=저수요·고커버리지(과잉), 우하=고수요·저커버리지(부족), 우상=고수요·고커버리지."
+            "우하(고수요·저DOS): 최우선 발주/대체 | "
+            "좌하(저수요·저DOS): 단종/주문주기 검토 | "
+            "우상(고수요·고DOS): 적정 버퍼 | "
+            "좌상(저수요·고DOS): 과잉/재고조정"
         )
     else:
         st.caption("산점도: DOS가 있는 SKU가 없어 표시하지 않습니다.")
 
-    # C. 드릴다운 테이블
+    # D) 드릴다운 테이블: bucket 컬럼, multi-select(기본 부족·과잉), 정렬 bucket 우선 → coverage_days ASC
     st.subheader("드릴다운 테이블")
-    display_health = health[
-        ["sku", "sku_name", "category", "warehouse", "onhand_qty", "demand_30d", "avg_daily_demand_14d", "coverage_days", "risk_level"]
-    ].copy()
-    display_health = display_health.sort_values("coverage_days", ascending=True, na_position="last")
+    bucket_order = {"부족": 0, "과잉": 1, "적정": 2, "무수요": 3}
+    health["_bucket_order"] = health["bucket"].map(bucket_order)
+
+    bucket_options = ["부족", "적정", "과잉", "무수요"]
+    selected_buckets = st.multiselect(
+        "bucket",
+        options=bucket_options,
+        default=["부족", "과잉"],
+        key="health_bucket_filter",
+    )
+    if not selected_buckets:
+        selected_buckets = bucket_options
+    display_health = health[health["bucket"].isin(selected_buckets)].copy()
+    display_health = display_health.sort_values(["_bucket_order", "coverage_days"], ascending=[True, True], na_position="last")
+    display_health = display_health[
+        ["sku", "sku_name", "category", "warehouse", "onhand_qty", "demand_30d", "avg_daily_demand_Nd", "coverage_days", "bucket"]
+    ].drop(columns=["_bucket_order"], errors="ignore")
     st.dataframe(display_health, use_container_width=True)
 
 with tab_stockout:
