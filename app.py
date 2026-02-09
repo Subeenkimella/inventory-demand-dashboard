@@ -100,42 +100,14 @@ st.sidebar.selectbox(
     format_func=lambda x: "전체" if x == "ALL" else x,
     key="sku_pick",
 )
-range_opts = ["ALL", 7, 14, 30, 60, 90]
-risk_opts = ["ALL", 7, 14, 21, 30, 60]
-overstock_opts = ["ALL", 30, 60, 90, 120]
-
-st.sidebar.selectbox(
-    "기간(일)",
-    options=range_opts,
-    index=range_opts.index(st.session_state.get("range_days", 60)) if st.session_state.get("range_days", 60) in range_opts else 4,
-    format_func=lambda x: "전체" if x == "ALL" else f"{x}일",
-    key="range_days",
-)
-st.sidebar.selectbox(
-    "품절기준(일)",
-    options=risk_opts,
-    index=risk_opts.index(st.session_state.get("risk_threshold_days", 14)) if st.session_state.get("risk_threshold_days", 14) in risk_opts else 1,
-    format_func=lambda x: "전체" if x == "ALL" else f"{x}일 미만",
-    key="risk_threshold_days",
-)
-st.sidebar.selectbox(
-    "과잉기준(일)",
-    options=overstock_opts,
-    index=overstock_opts.index(st.session_state.get("overstock_threshold_days", 60)) if st.session_state.get("overstock_threshold_days", 60) in overstock_opts else 2,
-    format_func=lambda x: "전체" if x == "ALL" else f"{x}일 초과",
-    key="overstock_threshold_days",
-)
 
 cat = st.session_state.get("cat", "ALL")
 wh = st.session_state.get("wh", "ALL")
 sku_pick = st.session_state.get("sku_pick", "ALL")
-# "전체" 선택 시: 기간=90일, 품절기준=60일, 과잉기준=120일로 적용
-_range = st.session_state.get("range_days", 60)
-_risk = st.session_state.get("risk_threshold_days", 14)
-_over = st.session_state.get("overstock_threshold_days", 60)
-range_days = 90 if _range == "ALL" else _range
-risk_threshold_days = 60 if _risk == "ALL" else _risk
-overstock_threshold_days = 120 if _over == "ALL" else _over
+# Overview 탭 필터 값 사용 (SQL은 상단에서 실행되므로 session_state 기본값 사용)
+range_days = st.session_state.get("ov_range_days", 60)
+risk_threshold_days = st.session_state.get("exec_risk_threshold", 14)
+overstock_threshold_days = st.session_state.get("exec_overstock_threshold", 60)
 # --- Executive Overview KPIs (Tab1) ---
 exec_kpi_sql = f"""
 WITH base_sku AS (
@@ -510,6 +482,34 @@ tab_exec, tab_health, tab_stockout, tab_actions, tab_movements = st.tabs([
 
 with tab_exec:
     st.subheader("Overview")
+    # 기준/정책 필터 (이 탭에서만 사용, 기본값 60/14/60)
+    st.caption("기준 설정")
+    col_ov_r, col_ov_risk, col_ov_over = st.columns(3)
+    with col_ov_r:
+        st.selectbox(
+            "분석 기간(일)",
+            options=[7, 14, 30, 60, 90],
+            index=[7, 14, 30, 60, 90].index(st.session_state.get("ov_range_days", 60)) if st.session_state.get("ov_range_days", 60) in [7, 14, 30, 60, 90] else 3,
+            format_func=lambda x: f"{x}일",
+            key="ov_range_days",
+        )
+    with col_ov_risk:
+        st.selectbox(
+            "품절 리스크 기준(일)",
+            options=[7, 14, 21, 30, 60],
+            index=[7, 14, 21, 30, 60].index(st.session_state.get("exec_risk_threshold", 14)) if st.session_state.get("exec_risk_threshold", 14) in [7, 14, 21, 30, 60] else 1,
+            format_func=lambda x: f"{x}일 미만",
+            key="exec_risk_threshold",
+        )
+    with col_ov_over:
+        st.selectbox(
+            "과잉재고 기준(일)",
+            options=[30, 60, 90, 120],
+            index=[30, 60, 90, 120].index(st.session_state.get("exec_overstock_threshold", 60)) if st.session_state.get("exec_overstock_threshold", 60) in [30, 60, 90, 120] else 1,
+            format_func=lambda x: f"{x}일 초과",
+            key="exec_overstock_threshold",
+        )
+
     col1, col2, col3, col4, col5 = st.columns(5)
 
     total_onhand = int(pd.to_numeric(exec_kpi["total_onhand"], errors="coerce")) if pd.notna(exec_kpi["total_onhand"]) else 0
@@ -571,6 +571,14 @@ with tab_health:
     st.subheader("재고 건전성 분석")
     st.caption("재고 부족/적정/과잉 구조 파악")
 
+    health_over_days = st.selectbox(
+        "과잉재고 기준(일) — 2x2 매트릭스 Y축",
+        options=[30, 60, 90, 120],
+        index=[30, 60, 90, 120].index(st.session_state.get("health_over_days", 60)) if st.session_state.get("health_over_days", 60) in [30, 60, 90, 120] else 1,
+        format_func=lambda x: f"{x}일 초과",
+        key="health_over_days",
+    )
+
     # A. 무수요 SKU 수 카드 + DOS 분포 히스토그램
     no_demand_cnt = int(health["coverage_days"].isna().sum())
     health_with_dos = health[health["coverage_days"].notna()].copy()
@@ -600,7 +608,7 @@ with tab_health:
 
     if not scatter_df.empty:
         med_demand_30d = float(scatter_df["demand_30d"].median())
-        y_threshold = overstock_threshold_days
+        y_threshold = health_over_days
 
         fig_scatter = px.scatter(
             scatter_df,
@@ -647,13 +655,12 @@ with tab_stockout:
     st.caption("DOS(재고 소진 예상일수) = 현재 재고 / 최근 14일 평균 일수요 | Risk Level: Critical 0~3일, High 3~7일, Medium 7~14일, Low 14일 이상")
 
     risk_period_options = [7, 14, 21, 30, 60]
-    risk_period_default_idx = risk_period_options.index(risk_threshold_days) if risk_threshold_days in risk_period_options else 1
     risk_period_days = st.selectbox(
         "재고 소진 기준(일수)",
         options=risk_period_options,
-        index=risk_period_default_idx,
+        index=risk_period_options.index(st.session_state.get("risk_tab_period_days", 14)) if st.session_state.get("risk_tab_period_days", 14) in risk_period_options else 1,
         format_func=lambda x: f"{x}일 미만",
-        key="risk_period_days",
+        key="risk_tab_period_days",
     )
     risk_level_filter = st.selectbox(
         "Risk Level",
@@ -748,7 +755,14 @@ with tab_movements:
     if inv_txn is None or len(inv_txn) == 0:
         st.info("inventory_txn 데이터가 없거나 비어 있습니다. CSV를 추가하면 입출고 차트와 트랜잭션 테이블이 표시됩니다.")
     else:
-        # 1) 입출고 집계 (dt/qty 강제 캐스팅, range_days)
+        mov_range_days = st.selectbox(
+            "분석 기간(일)",
+            options=[7, 14, 30, 60, 90],
+            index=[7, 14, 30, 60, 90].index(st.session_state.get("mov_range_days", 60)) if st.session_state.get("mov_range_days", 60) in [7, 14, 30, 60, 90] else 3,
+            format_func=lambda x: f"{x}일",
+            key="mov_range_days",
+        )
+        # 1) 입출고 집계 (dt/qty 강제 캐스팅, mov_range_days)
         txn_trend_sql = f"""
         WITH filtered AS (
           SELECT
@@ -756,7 +770,7 @@ with tab_movements:
             TRY_CAST(t.qty AS DOUBLE) AS qty
           FROM inventory_txn t
           WHERE CAST(COALESCE(t.date, CAST(t.txn_datetime AS DATE)) AS DATE)
-                BETWEEN '{latest_date}'::DATE - INTERVAL {range_days} DAY AND '{latest_date}'::DATE
+                BETWEEN '{latest_date}'::DATE - INTERVAL {mov_range_days} DAY AND '{latest_date}'::DATE
             {"AND t.warehouse = '"+wh+"'" if wh!="ALL" else ""}
             {"AND t.sku = '"+sku_pick+"'" if sku_pick!="ALL" else ""}
             {"AND EXISTS (SELECT 1 FROM sku_master m WHERE m.sku = t.sku AND m.category = '"+cat+"')" if cat!="ALL" else ""}
@@ -779,14 +793,14 @@ with tab_movements:
         else:
             col_in, col_out = st.columns(2)
             with col_in:
-                fig_in = px.bar(txn_trend, x="date", y="in_qty", title=f"입고(IN) — 최근 {range_days}일")
+                fig_in = px.bar(txn_trend, x="date", y="in_qty", title=f"입고(IN) — 최근 {mov_range_days}일")
                 fig_in.update_layout(xaxis_title="일자", yaxis_title="입고 수량")
                 fig_in.update_xaxes(tickformat="%Y-%m-%d")
                 fig_in.update_yaxes(tickformat=",.0f")
                 fig_in = apply_plotly_theme(fig_in)
                 st.plotly_chart(fig_in, use_container_width=True)
             with col_out:
-                fig_out = px.bar(txn_trend, x="date", y="out_qty", title=f"출고(OUT) — 최근 {range_days}일")
+                fig_out = px.bar(txn_trend, x="date", y="out_qty", title=f"출고(OUT) — 최근 {mov_range_days}일")
                 fig_out.update_layout(xaxis_title="일자", yaxis_title="출고 수량")
                 fig_out.update_xaxes(tickformat="%Y-%m-%d")
                 fig_out.update_yaxes(tickformat=",.0f")
