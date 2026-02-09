@@ -104,10 +104,10 @@ st.sidebar.selectbox(
 cat = st.session_state.get("cat", "ALL")
 wh = st.session_state.get("wh", "ALL")
 sku_pick = st.session_state.get("sku_pick", "ALL")
-# Overview 탭 필터 값 사용 (SQL은 상단에서 실행되므로 session_state 기본값 사용)
+# Overview: 조회 기간만 탭 필터(ov_range_days), 트렌드 INTERVAL에 사용. KPI는 7일 수요·고정 기준 사용.
 range_days = st.session_state.get("ov_range_days", 60)
-risk_threshold_days = st.session_state.get("exec_risk_threshold", 14)
-overstock_threshold_days = st.session_state.get("exec_overstock_threshold", 60)
+risk_threshold_days = 14
+overstock_threshold_days = 60
 # --- Executive Overview KPIs (Tab1) ---
 exec_kpi_sql = f"""
 WITH base_sku AS (
@@ -481,49 +481,32 @@ tab_exec, tab_health, tab_stockout, tab_actions, tab_movements = st.tabs([
 ])
 
 with tab_exec:
-    st.subheader("Overview")
-    # 기준/정책 필터 (이 탭에서만 사용, 기본값 60/14/60)
-    st.caption("기준 설정")
-    col_ov_r, col_ov_risk, col_ov_over = st.columns(3)
-    with col_ov_r:
-        st.selectbox(
-            "분석 기간(일)",
-            options=[7, 14, 30, 60, 90],
-            index=[7, 14, 30, 60, 90].index(st.session_state.get("ov_range_days", 60)) if st.session_state.get("ov_range_days", 60) in [7, 14, 30, 60, 90] else 3,
-            format_func=lambda x: f"{x}일",
-            key="ov_range_days",
-        )
-    with col_ov_risk:
-        st.selectbox(
-            "품절 리스크 기준(일)",
-            options=[7, 14, 21, 30, 60],
-            index=[7, 14, 21, 30, 60].index(st.session_state.get("exec_risk_threshold", 14)) if st.session_state.get("exec_risk_threshold", 14) in [7, 14, 21, 30, 60] else 1,
-            format_func=lambda x: f"{x}일 미만",
-            key="exec_risk_threshold",
-        )
-    with col_ov_over:
-        st.selectbox(
-            "과잉재고 기준(일)",
-            options=[30, 60, 90, 120],
-            index=[30, 60, 90, 120].index(st.session_state.get("exec_overstock_threshold", 60)) if st.session_state.get("exec_overstock_threshold", 60) in [30, 60, 90, 120] else 1,
-            format_func=lambda x: f"{x}일 초과",
-            key="exec_overstock_threshold",
-        )
+    st.subheader("30초 상황판")
+    st.caption("한눈에 보는 재고·수요 요약. 조회 기간은 추이 차트에만 적용됩니다.")
+
+    # 탭 내부 필터 1개: 조회 기간(일) — 수요/재고 추이 INTERVAL에 사용
+    st.selectbox(
+        "조회 기간(일)",
+        options=[7, 14, 30, 60, 90],
+        index=[7, 14, 30, 60, 90].index(st.session_state.get("ov_range_days", 60)) if st.session_state.get("ov_range_days", 60) in [7, 14, 30, 60, 90] else 3,
+        format_func=lambda x: f"{x}일",
+        key="ov_range_days",
+    )
 
     col1, col2, col3, col4, col5 = st.columns(5)
-
     total_onhand = int(pd.to_numeric(exec_kpi["total_onhand"], errors="coerce")) if pd.notna(exec_kpi["total_onhand"]) else 0
     total_demand_7d = int(pd.to_numeric(exec_kpi["total_demand_7d"], errors="coerce")) if pd.notna(exec_kpi["total_demand_7d"]) else 0
     median_dos_val = exec_kpi["median_dos"]
     median_dos_str = f"{median_dos_val:,.1f}" if pd.notna(median_dos_val) and (median_dos_val == median_dos_val) else "—"
     stockout_sku_cnt = int(pd.to_numeric(exec_kpi["stockout_sku_cnt"], errors="coerce")) if pd.notna(exec_kpi["stockout_sku_cnt"]) else 0
     overstock_sku_cnt = int(pd.to_numeric(exec_kpi["overstock_sku_cnt"], errors="coerce")) if pd.notna(exec_kpi["overstock_sku_cnt"]) else 0
-
     col1.metric("현재 총 재고 (개)", f"{total_onhand:,}")
     col2.metric("최근 7일 수요 (개)", f"{total_demand_7d:,}")
     col3.metric("DOS 중앙값 (일)", median_dos_str)
     col4.metric("품절 리스크 SKU 수", f"{stockout_sku_cnt:,}")
     col5.metric("과잉재고 SKU 수", f"{overstock_sku_cnt:,}")
+
+    st.caption("※ DOS 및 리스크 관련 지표는 최근 7일 수요 기반으로 산정")
 
     col_trend_demand, col_trend_inv = st.columns(2)
     with col_trend_demand:
