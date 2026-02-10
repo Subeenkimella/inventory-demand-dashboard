@@ -6,6 +6,16 @@ import plotly.express as px
 
 st.set_page_config(page_title="재고·수요 모니터링 대시보드", layout="wide", initial_sidebar_state="expanded")
 
+# 사이드바 폰트 축소: 한눈에 보이도록
+st.markdown("""
+<style>
+  [data-testid="stSidebar"] { font-size: 0.8125rem; }
+  [data-testid="stSidebar"] [data-testid="stMarkdown"] p,
+  [data-testid="stSidebar"] label { font-size: 0.8125rem !important; }
+  [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2 { font-size: 1rem !important; }
+</style>
+""", unsafe_allow_html=True)
+
 # [문구 스타일 가이드]
 # 1. 톤: 현업(구매/자재/SCM)이 5초 안에 상태·리스크·조치를 파악할 수 있도록 짧고 단정하게(한 문장 25~60자).
 # 2. 용어: 영어 혼용 금지. MAPE·SKU·DOS 등 업계 약어는 괄호로 1회만 풀어서 병기 후 이후 약어만 사용.
@@ -391,17 +401,9 @@ st.sidebar.selectbox(
 st.sidebar.divider()
 st.sidebar.header("예측 설정")
 st.sidebar.caption("수요 예측 모델·기간. Overview·리스크·발주 탭에 반영")
-horizon_opts = ["ALL", 7, 14, 30, 60]
 model_opts = ["MovingAvg(7)", "MovingAvg(14)", "MovingAvg(30)", "SeasonalNaive(7)"]
+horizon_opts = ["ALL", 7, 14, 30, 60]
 lookback_opts = ["ALL", 90, 180, 365]
-horizon_val = st.sidebar.selectbox(
-    "예측 기간(일)",
-    options=horizon_opts,
-    index=horizon_opts.index(st.session_state.get("forecast_horizon_days", 14)) if st.session_state.get("forecast_horizon_days", 14) in horizon_opts else 1,
-    format_func=lambda x: "전체" if x == "ALL" else f"{x}일",
-    key="forecast_horizon_days",
-)
-horizon_days = 365 if horizon_val == "ALL" else horizon_val
 _model_help = (
     "MovingAvg(N): 최근 N일 수요 평균으로 일별 예측. 단순·안정적.\n\n"
     "SeasonalNaive(N): 최근 N일 패턴을 일별로 반복. 주간 계절성에 적합."
@@ -413,6 +415,14 @@ model_type = st.sidebar.selectbox(
     key="forecast_model_type",
     help=_model_help,
 )
+horizon_val = st.sidebar.selectbox(
+    "예측 기간(일)",
+    options=horizon_opts,
+    index=horizon_opts.index(st.session_state.get("forecast_horizon_days", 14)) if st.session_state.get("forecast_horizon_days", 14) in horizon_opts else 1,
+    format_func=lambda x: "전체" if x == "ALL" else f"{x}일",
+    key="forecast_horizon_days",
+)
+horizon_days = 365 if horizon_val == "ALL" else horizon_val
 lookback_val = st.sidebar.selectbox(
     "학습 구간(일)",
     options=lookback_opts,
