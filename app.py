@@ -749,7 +749,7 @@ with tab_action:
     st.markdown(f"{worst_mark} 지금 발주·재고 조정이 필요한 SKU를 우선순위로 정렬했습니다.")
 
     st.markdown("**[SKU 분석] 즉시 발주 또는 재고 조정 검토 필요**" + (" (예측 기반)" if use_forecast else " (실적 기반)"))
-    st.caption("이 테이블은 현 기준 발주·재고 조정이 필요한 SKU별 조치 사유 및 리스크를 보여줍니다.")
+    st.caption("이 테이블은 현 기준 발주·재고 조정이 필요한 SKU별 조치 사유 및 리스크를 보여줍니다. \n 우선순위 점수는 최근 7일간 수요 대비 재고 여유를 고려해, 즉시 대응이 필요한 SKU를 선별하기 위한 상대적 정렬 기준입니다.")
 
     action_list = []
     if not base_df.empty:
