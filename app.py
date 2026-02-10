@@ -1,4 +1,4 @@
-# test commit - retry
+# test commit - 
 
 import re
 import streamlit as st
@@ -794,23 +794,34 @@ with tab_action:
 with tab_admin:
     st.subheader("정책 설정")
     st.caption("리드타임·품절 위험·재고 과다 기준과 DOS 산정 기간을 설정합니다. 변경 후 다른 탭에서 즉시 반영됩니다.")
-    a_lt = st.number_input("리드타임 LT (일)", min_value=1, value=st.session_state.get("admin_lead_time_days", 7), key="admin_lead_time_days", step=1)
-    a_short = st.number_input("품절 위험 기준 DOS (일)", min_value=1, value=st.session_state.get("admin_shortage_days", 14), key="admin_shortage_days", step=1)
-    a_over = st.number_input("재고 과다 기준 DOS (일)", min_value=1, value=st.session_state.get("admin_over_days", 60), key="admin_over_days", step=1)
-    a_dos_basis = st.number_input("DOS 산정 기간 (최근 N일)", min_value=1, value=st.session_state.get("admin_dos_basis_days", 14), key="admin_dos_basis_days", step=1)
-    if a_over <= a_short:
+    p1, p2, p3, p4 = st.columns(4)
+    with p1:
+        st.number_input("리드타임 LT (일)", min_value=1, value=st.session_state.get("admin_lead_time_days", 7), key="admin_lead_time_days", step=1)
+    with p2:
+        st.number_input("품절 위험 기준 DOS (일)", min_value=1, value=st.session_state.get("admin_shortage_days", 14), key="admin_shortage_days", step=1)
+    with p3:
+        st.number_input("재고 과다 기준 DOS (일)", min_value=1, value=st.session_state.get("admin_over_days", 60), key="admin_over_days", step=1)
+    with p4:
+        st.number_input("DOS 산정 기간 (최근 N일)", min_value=1, value=st.session_state.get("admin_dos_basis_days", 14), key="admin_dos_basis_days", step=1)
+    if st.session_state.get("admin_over_days", 60) <= st.session_state.get("admin_shortage_days", 14):
         st.warning("재고 과다 기준이 품절 위험 기준 이하입니다. 저장 시 자동 보정(과다 = 품절위험+1)됩니다.")
     st.divider()
     st.subheader("예측 모델 설정")
-    st.caption("수요 예측에 사용할 모델과 학습·예측 기간을 설정합니다.")
+    st.caption("수요 예측에 사용할 모델·학습일·예측일을 설정합니다. 변경 후 다른 탭에서 즉시 반영됩니다.")
     model_opts = ["MovingAvg(7)", "MovingAvg(14)", "MovingAvg(30)", "SeasonalNaive(7)"]
     idx = model_opts.index(st.session_state.get("admin_forecast_model", "MovingAvg(14)")) if st.session_state.get("admin_forecast_model", "MovingAvg(14)") in model_opts else 1
-    st.selectbox(
-        "예측 모델",
-        options=model_opts,
-        index=idx,
-        key="admin_forecast_model",
-        help="MovingAvg(N): 최근 N일 수요 평균으로 예측. SeasonalNaive(7): 최근 7일 패턴 반복.",
-    )
-    st.number_input("예측 기간 (일)", min_value=7, value=st.session_state.get("admin_forecast_horizon", 60), key="admin_forecast_horizon", step=1)
-    st.number_input("학습 구간 (일)", min_value=30, value=st.session_state.get("admin_forecast_lookback", 180), key="admin_forecast_lookback", step=1)
+    f1, f2, f3, f4 = st.columns(4)
+    with f1:
+        st.selectbox(
+            "예측 모델",
+            options=model_opts,
+            index=idx,
+            key="admin_forecast_model",
+            help="MovingAvg(N): 최근 N일 수요 평균. SeasonalNaive(7): 최근 7일 패턴 반복.",
+        )
+    with f2:
+        st.number_input("학습 구간 (일)", min_value=30, value=st.session_state.get("admin_forecast_lookback", 180), key="admin_forecast_lookback", step=1)
+    with f3:
+        st.number_input("예측 기간 (일)", min_value=7, value=st.session_state.get("admin_forecast_horizon", 60), key="admin_forecast_horizon", step=1)
+    with f4:
+        st.caption("**현재 적용**  \n모델: " + st.session_state.get("admin_forecast_model", "MovingAvg(14)") + "  \n학습 " + str(st.session_state.get("admin_forecast_lookback", 180)) + "일 · 예측 " + str(st.session_state.get("admin_forecast_horizon", 60)) + "일")
