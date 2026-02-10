@@ -701,8 +701,7 @@ with tab_time:
             y="sku",
             color="상태",
             color_discrete_map={"긴급": "#e11d48", "주의": "#f97316", "안정": "#22c55e"},
-            hover_data=["sku", "sku_name", "warehouse", "dos_used"],
-            title="예상 품절일 기준 타임라인",
+            hover_data=["sku", "sku_name", "warehouse", "dos_used"]
         )
         fig_t.update_layout(xaxis_title="예상 품절일", yaxis_title="SKU")
         fig_t = apply_plotly_theme(fig_t)
