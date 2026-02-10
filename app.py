@@ -458,9 +458,6 @@ def classify_status(est_date, dos):
         return "🟠", "주의"
     return "🟢", "안정"
 
-risk_cnt = int((base_df["dos_used"].notna() & (base_df["dos_used"] < SHORTAGE_DAYS)).sum())
-st.markdown(f"{worst_mark} 현재 재고 상태: {worst_state} · DOS 기준 품절 위험 SKU {risk_cnt}건")
-
 
 # --- 상단 헤더: 왼쪽 타이틀 + 오른쪽 상단 정책/예측 박스 2개 ---
 col_title, col_boxes = st.columns([2, 1])
@@ -489,13 +486,16 @@ tab_overview, tab_cause, tab_time, tab_action = st.tabs([
 with tab_overview:
     # 탭 상단 상태 배지 + 핵심 한 문장
     worst_state = "안정"
-    worst_mark = "🟢"
+    worst_state, worst_mark = "안정", "🟢"
     if not base_df.empty:
         if (base_df["상태"] == "긴급").any():
             worst_state, worst_mark = "긴급", "🔴"
         elif (base_df["상태"] == "주의").any():
             worst_state, worst_mark = "주의", "🟠"
-    st.markdown(f"{worst_mark} 현재 재고 상태: {worst_state}")
+
+    risk_cnt = int((base_df["dos_used"].notna() & (base_df["dos_used"] < SHORTAGE_DAYS)).sum()) if not base_df.empty else 0
+    st.markdown(f"{worst_mark} 현재 재고 상태: {worst_state} · DOS 기준 품절 위험 SKU {risk_cnt}건")
+
 
     median_dos_str = f"{median_dos_val:,.1f}일" if pd.notna(median_dos_val) and median_dos_val == median_dos_val else "—"
 
