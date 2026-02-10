@@ -607,9 +607,9 @@ with tab_overview:
         n_hdld = int(high_demand_low_dos.sum())
     else:
         n_urgent = n_warn = n_hdld = 0
-    col_a.markdown(f"🔴 LT 이전 품절 {n_urgent}건")
-    col_b.markdown(f"🟠 14일 이내 소진 {n_warn}건")
-    col_c.markdown(f"⚠ 수요 급증 대비 재고 부족 {n_hdld}건")
+    col_a.markdown(f"🔴 LT 이전 품절 예상 : {n_urgent}건")
+    col_b.markdown(f"🟠 14일 이내 소진 예상 : {n_warn}건")
+    col_c.markdown(f"⚠ 수요 급증 대비 재고 부족 예상 : {n_hdld}건")
 
 # ========== 2) 재고 위험 원인 분석 (Cause) — 2) 어떤 SKU가 문제인가, 왜? ==========
 with tab_cause:
@@ -748,8 +748,8 @@ with tab_action:
             worst_state, worst_mark = "주의", "🟠"
     st.markdown(f"{worst_mark} 지금 발주·재고 조정이 필요한 SKU를 우선순위로 정렬했습니다.")
 
-    st.markdown("**즉시 발주 또는 재고 조정 검토가 필요한 SKU**" + (" (예측 기반)" if use_forecast else " (실적 기반)"))
-    st.caption("이 테이블은 왜 조치해야 하는지, 조치하지 않을 경우 리스크, 권장 조치를 한 번에 보여줍니다.")
+    st.markdown("**[SKU 분석] 즉시 발주 또는 재고 조정 검토 필요**" + (" (예측 기반)" if use_forecast else " (실적 기반)"))
+    st.caption("이 테이블은 현 기준 발주·재고 조정이 필요한 SKU별 조치 사유 및 리스크를 보여줍니다.")
 
     action_list = []
     if not base_df.empty:
@@ -781,9 +781,9 @@ with tab_action:
                 "SKU": row["sku"],
                 "품목명": row.get("sku_name", ""),
                 "창고": row.get("warehouse", "—"),
-                "왜 조치해야 하는가(사유)": reason,
-                "조치하지 않을 경우 리스크": risk,
-                "권장 조치": action,
+                "재고 조정 필요 사유": reason,
+                "재고 리스크": risk,
+                "재고 리스크 권장 조치 사항" : action,
                 "우선순위 점수": row.get("priority_score", 0.0),
             })
 
