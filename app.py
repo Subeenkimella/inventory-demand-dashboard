@@ -1,3 +1,11 @@
+"""
+[변경 요약]
+- 개요 탭: Summary-only( KPI 5개 + 우선 점검 이슈 Top5 + 오늘 할 일 Top5 ). 미래 전망·추이·카테고리 비중·우선 조치 10건 제거.
+- 기준: 예측 데이터 없으면 실적 기준 자동 fallback. 모든 탭 캡션에 "현재 기준" 표기.
+- 일수요 포맷: fmt_rate_per_day(개/일) 적용. DOS/일수는 fmt_days+일, 수량은 fmt_qty.
+- 탭명 한글 통일(Overview→개요). 품절 위험 컬럼 "우선순위(수요/커버리지)". 발주 ROP=일수요×리드타임+안전재고, 상단 산식·MOQ 없음 캡션.
+- 입출고 추적: 수량 콤마 포맷 일관.
+"""
 import math
 import streamlit as st
 import pandas as pd
@@ -580,7 +588,7 @@ div[data-testid="stTabs"] [data-baseweb="tab-panel"]{
 
 # --- Tabs (MUST create tab variables before using with tab_exec) ---
 tab_exec, tab_health, tab_stockout, tab_actions, tab_movements = st.tabs([
-    "Overview",
+    "개요",
     "재고 적정성",
     "품절 위험",
     "발주·조치",
@@ -590,29 +598,17 @@ tab_exec, tab_health, tab_stockout, tab_actions, tab_movements = st.tabs([
 
 
 with tab_exec:
-    st.markdown("#### Overview")
-    ov_trend_opts = [30, 60, 90, 180, "ALL"]
+    st.subheader("개요")
+    st.caption("현재 기준: " + basis_label + ". 상태·위험·조치 요약만 표시합니다. 상세는 각 탭에서 확인하세요.")
     ov_dos_opts = [7, 14, 30]
-    col_ov1, col_ov2 = st.columns(2)
-    with col_ov1:
-        trend_days_val = st.selectbox(
-            "추이 조회 기간(일)",
-            options=ov_trend_opts,
-            index=ov_trend_opts.index(st.session_state.get("ov_trend_days", 60)) if st.session_state.get("ov_trend_days", 60) in ov_trend_opts else 1,
-            format_func=lambda x: "전체(365일)" if x == "ALL" else f"{x}일",
-            key="ov_trend_days",
-        )
-    with col_ov2:
-        dos_basis_days = st.selectbox(
-            "DOS 산정 기준(최근 N일 평균 일수요)",
-            options=ov_dos_opts,
-            index=ov_dos_opts.index(st.session_state.get("ov_dos_basis_days", 14)) if st.session_state.get("ov_dos_basis_days", 14) in ov_dos_opts else 1,
-            format_func=lambda x: f"{x}일",
-            key="ov_dos_basis_days",
-        )
-    trend_days = 365 if trend_days_val == "ALL" else trend_days_val
-
-    # KPI: dos_basis_days 기준 median_dos, stockout(<14일), overstock(>60일)
+    dos_basis_days = st.selectbox(
+        "DOS(재고 커버리지 일수) 산정 기준(최근 N일 평균 일수요)",
+        options=ov_dos_opts,
+        index=ov_dos_opts.index(st.session_state.get("ov_dos_basis_days", 14)) if st.session_state.get("ov_dos_basis_days", 14) in ov_dos_opts else 1,
+        format_func=lambda x: f"{x}일",
+        key="ov_dos_basis_days",
+    )
+    # KPI 5개: total_onhand, 최근 7일 수요(실적), median_dos, stockout(<shortage_days_global), overstock(>over_days_global)
     exec_kpi_sql = f"""
     WITH base_sku AS (SELECT m.sku, m.sku_name, m.category FROM sku_master m WHERE 1=1 {base_where}),
     latest_inv AS (
@@ -628,6 +624,11 @@ with tab_exec:
       WHERE date > '{latest_date}'::DATE - INTERVAL {dos_basis_days} DAY AND date <= '{latest_date}'
       GROUP BY sku
     ),
+    demand_7d AS (
+      SELECT COALESCE(SUM(d.demand_qty), 0) AS v FROM demand_daily d
+      JOIN base_sku b ON d.sku = b.sku
+      WHERE d.date > '{latest_date}'::DATE - INTERVAL 7 DAY AND d.date <= '{latest_date}'::DATE
+    ),
     sku_dos AS (
       SELECT
         b.sku,
@@ -642,48 +643,26 @@ with tab_exec:
     )
     SELECT
       (SELECT COALESCE(SUM(onhand_qty), 0) FROM sku_dos) AS total_onhand,
-      (SELECT COALESCE(SUM(demand_Nd), 0) FROM sku_dos) AS total_demand_Nd,
+      (SELECT COALESCE(v, 0) FROM demand_7d) AS demand_cur_7,
       (SELECT MEDIAN(coverage_days) FROM sku_dos WHERE coverage_days IS NOT NULL) AS median_dos,
-      (SELECT COUNT(*) FROM sku_dos WHERE coverage_days IS NOT NULL AND coverage_days < 14) AS stockout_sku_cnt,
-      (SELECT COUNT(*) FROM sku_dos WHERE coverage_days IS NOT NULL AND coverage_days > 60) AS overstock_sku_cnt
+      (SELECT COUNT(*) FROM sku_dos WHERE coverage_days IS NOT NULL AND coverage_days < {shortage_days_global}) AS stockout_sku_cnt,
+      (SELECT COUNT(*) FROM sku_dos WHERE coverage_days IS NOT NULL AND coverage_days > {over_days_global}) AS overstock_sku_cnt
     """
     exec_kpi = con.execute(exec_kpi_sql).fetchdf().iloc[0]
-    # Deltas vs 7 days ago (onhand) and vs previous 7 days (demand)
-    delta_sql = f"""
-    WITH base_sku AS (SELECT m.sku FROM sku_master m WHERE 1=1 {base_where}),
-    inv_now AS (SELECT SUM(onhand_qty) AS v FROM inventory_daily i JOIN base_sku b ON i.sku = b.sku WHERE i.date = '{latest_date}' {_inv_wh_where(wh)}),
-    inv_7d AS (SELECT SUM(onhand_qty) AS v FROM inventory_daily i JOIN base_sku b ON i.sku = b.sku WHERE i.date = '{latest_date}'::DATE - INTERVAL 7 DAY {_inv_wh_where(wh)}),
-    demand_cur_7 AS (SELECT COALESCE(SUM(d.demand_qty), 0) AS v FROM demand_daily d JOIN base_sku b ON d.sku = b.sku WHERE d.date > '{latest_date}'::DATE - INTERVAL 7 DAY AND d.date <= '{latest_date}'::DATE),
-    demand_prev_7 AS (SELECT COALESCE(SUM(d.demand_qty), 0) AS v FROM demand_daily d JOIN base_sku b ON d.sku = b.sku WHERE d.date > '{latest_date}'::DATE - INTERVAL 14 DAY AND d.date <= '{latest_date}'::DATE - INTERVAL 7 DAY)
-    SELECT (SELECT COALESCE(v, 0) FROM inv_now) AS onhand_now, (SELECT COALESCE(v, 0) FROM inv_7d) AS onhand_7d_ago,
-           (SELECT COALESCE(v, 0) FROM demand_cur_7) AS demand_cur_7, (SELECT COALESCE(v, 0) FROM demand_prev_7) AS demand_prev_7
-    """
-    try:
-        delta_row = con.execute(delta_sql).fetchdf().iloc[0]
-        onhand_now = int(pd.to_numeric(delta_row["onhand_now"], errors="coerce")) if pd.notna(delta_row["onhand_now"]) else 0
-        onhand_7d = int(pd.to_numeric(delta_row["onhand_7d_ago"], errors="coerce")) if pd.notna(delta_row["onhand_7d_ago"]) else 0
-        demand_cur_7 = int(pd.to_numeric(delta_row["demand_cur_7"], errors="coerce")) if pd.notna(delta_row["demand_cur_7"]) else 0
-        demand_prev_7 = int(pd.to_numeric(delta_row["demand_prev_7"], errors="coerce")) if pd.notna(delta_row["demand_prev_7"]) else 0
-        delta_onhand = (onhand_now - onhand_7d) if (onhand_now or onhand_7d) else None
-        delta_demand = (demand_cur_7 - demand_prev_7) if (demand_cur_7 is not None and demand_prev_7 is not None) else None
-    except Exception:
-        delta_onhand = None
-        delta_demand = None
-
-    col1, col2, col3, col4, col5 = st.columns(5)
     total_onhand = int(pd.to_numeric(exec_kpi["total_onhand"], errors="coerce")) if pd.notna(exec_kpi["total_onhand"]) else 0
-    total_demand_Nd = int(pd.to_numeric(exec_kpi["total_demand_Nd"], errors="coerce")) if pd.notna(exec_kpi["total_demand_Nd"]) else 0
+    demand_cur_7 = int(pd.to_numeric(exec_kpi["demand_cur_7"], errors="coerce")) if pd.notna(exec_kpi["demand_cur_7"]) else 0
     median_dos_val = exec_kpi["median_dos"]
-    median_dos_str = f"{median_dos_val:,.1f}" if pd.notna(median_dos_val) and (median_dos_val == median_dos_val) else "—"
+    median_dos_str = f"{median_dos_val:,.1f}일" if pd.notna(median_dos_val) and (median_dos_val == median_dos_val) else "—"
     stockout_sku_cnt = int(pd.to_numeric(exec_kpi["stockout_sku_cnt"], errors="coerce")) if pd.notna(exec_kpi["stockout_sku_cnt"]) else 0
     overstock_sku_cnt = int(pd.to_numeric(exec_kpi["overstock_sku_cnt"], errors="coerce")) if pd.notna(exec_kpi["overstock_sku_cnt"]) else 0
-    col1.metric("현재 재고(총 수량)", fmt_qty(total_onhand), delta=delta_onhand if delta_onhand is not None else None)
-    col2.metric(f"최근 {dos_basis_days}일 수요 합계", fmt_qty(total_demand_Nd), delta=delta_demand if delta_demand is not None else None)
-    col3.metric("커버리지(DOS) 중앙값(일)", median_dos_str)
-    col4.metric("품절 위험 SKU 수 (DOS 14일 미만)", fmt_qty(stockout_sku_cnt))
-    col5.metric("과잉 재고 SKU 수 (DOS 60일 초과)", fmt_qty(overstock_sku_cnt))
+    col1, col2, col3, col4, col5 = st.columns(5)
+    col1.metric("현재 재고(총 수량)", fmt_qty(total_onhand))
+    col2.metric("최근 7일 수요 합계(실적 기준)", fmt_qty(demand_cur_7))
+    col3.metric("DOS 중앙값(일, 최근 " + str(dos_basis_days) + "일 기준)", median_dos_str)
+    col4.metric("품절 위험 SKU 수 (DOS " + str(shortage_days_global) + "일 미만)", fmt_qty(stockout_sku_cnt))
+    col5.metric("과잉 SKU 수 (DOS " + str(over_days_global) + "일 초과)", fmt_qty(overstock_sku_cnt))
 
-    st.caption(f"DOS(재고 커버리지 일수) = 재고 ÷ 일평균 수요. 기준: 최근 {dos_basis_days}일. 품절 위험 14일 미만, 과잉 60일 초과.")
+    st.caption("DOS = 재고 ÷ 일평균 수요. 품절 위험·과잉 기준은 전역 정책 적용.")
 
     st.markdown("#### 우선 점검 이슈 (상위 5건)")
     hot_sql = f"""
@@ -760,201 +739,21 @@ with tab_exec:
             })
     hot_issues_df = pd.DataFrame(issues)
     if not hot_issues_df.empty:
-        hot_issues_df = hot_issues_df.sort_values(["_sort_date", "_cov"], ascending=[True, True], na_position="last").drop(columns=["_sort_date", "_cov"], errors="ignore").head(5)
-        st.dataframe(hot_issues_df[["SKU", "창고", "선정 사유", "심각도", "예상 품절일", "권장 발주수량"]], use_container_width=True, hide_index=True)
+        shortage_mask = hot_issues_df["선정 사유"].str.contains("품절|고수요", na=False)
+        shortage_df = hot_issues_df[shortage_mask].sort_values(["_sort_date", "_cov"], ascending=[True, True], na_position="last").head(3)
+        over_nodemand_df = hot_issues_df[~shortage_mask].sort_values("_cov", ascending=False, na_position="last").head(2)
+        top5_df = pd.concat([shortage_df, over_nodemand_df], ignore_index=True).drop(columns=["_sort_date", "_cov"], errors="ignore")
+        top5_df = top5_df[["SKU", "창고", "선정 사유", "심각도", "예상 품절일", "권장 발주수량"]]
+        st.dataframe(top5_df, use_container_width=True, hide_index=True)
     else:
         st.caption("현재 필터에서 우선 점검 이슈가 없습니다.")
 
-    st.divider()
-    st.markdown("#### 2. 미래 전망 (" + basis_label + ")")
-    if not forecast_daily.empty:
-        mape_pct, mape_n = compute_mape_backtest(demand, lookback_days, model_type, str(latest_date), 14)
-        if mape_pct is not None:
-            if mape_pct < 20:
-                confidence_hint = "높음"
-            elif mape_pct < 40:
-                confidence_hint = "보통"
-            else:
-                confidence_hint = "낮음"
-        else:
-            confidence_hint = "—"
-        forecast_total = int(forecast_daily["forecast_qty"].sum())
-        latest_dt = pd.to_datetime(latest_date)
-        f7_cut = latest_dt + pd.Timedelta(days=7)
-        lead_days = lead_time_days_global
-        lead_cut = latest_dt + pd.Timedelta(days=lead_days)
-        f_daily = forecast_daily.copy()
-        f_daily["date"] = pd.to_datetime(f_daily["date"])
-        forecast_next7 = int(f_daily[f_daily["date"] <= f7_cut]["forecast_qty"].sum())
-        lead_time_total = int(f_daily[f_daily["date"] <= lead_cut]["forecast_qty"].sum())
-        horizon_cut = latest_dt + pd.Timedelta(days=horizon_days)
-        risk_in_horizon = 0
-        if not forecast_metrics_df.empty and "stockout_date_forecast" in forecast_metrics_df.columns:
-            fm = forecast_metrics_df[forecast_metrics_df["stockout_date_forecast"].notna()].copy()
-            fm["stockout_date_forecast"] = pd.to_datetime(fm["stockout_date_forecast"])
-            risk_in_horizon = int((fm["stockout_date_forecast"] <= horizon_cut).sum())
-        col_f1, col_f2, col_f3 = st.columns(3)
-        col_f1.metric(f"향후 {horizon_days}일 예상 수요 합계", fmt_qty(forecast_total))
-        col_f2.metric(
-            f"향후 {lead_days}일 예상 수요" + (" (리드타임 구간)" if lead_days != 7 else ""),
-            fmt_qty(lead_time_total if lead_days != 7 else forecast_next7),
-        )
-        col_f3.metric(f"품절 위험 SKU 수 (향후 {horizon_days}일 이내, " + basis_label + ")", fmt_qty(risk_in_horizon))
-        if mape_pct is not None:
-            st.caption(f"**MAPE(평균절대백분율오차)** 최근 14일 백테스트: {mape_pct:.1f}% (n={mape_n}). 참고용이며, **예측 신뢰도:** {confidence_hint} (20% 미만=높음, 20–40%=보통, 40% 초과=낮음).")
-    else:
-        st.caption("예측 데이터가 없습니다. 사이드바에서 예측 설정·조회 조건을 확인하세요.")
-
-    st.divider()
-    st.markdown("#### 3. 수요·재고 추이")
-    show_forecast_overlay = st.toggle("예측선 표시", value=True, key="ov_show_forecast_overlay")
-    trend_sql = f"""
-    {_base_sku_cte(base_where)}
-    SELECT d.date, SUM(d.demand_qty) AS demand_qty
-    FROM demand_daily d
-    JOIN base_sku b ON d.sku = b.sku
-    WHERE d.date >= '{latest_date}'::DATE - INTERVAL {trend_days} DAY
-    GROUP BY d.date
-    ORDER BY d.date
-    """
-    trend = con.execute(trend_sql).fetchdf()
-    inv_trend_sql = f"""
-    {_base_sku_cte(base_where)}
-    SELECT i.date, SUM(i.onhand_qty) AS onhand_qty
-    FROM inventory_daily i
-    JOIN base_sku b ON i.sku = b.sku
-    WHERE i.date >= '{latest_date}'::DATE - INTERVAL {trend_days} DAY
-    {_inv_wh_where(wh)}
-    GROUP BY i.date
-    ORDER BY i.date
-    """
-    inv_trend = con.execute(inv_trend_sql).fetchdf()
-
-    col_trend_demand, col_trend_inv = st.columns(2)
-    with col_trend_demand:
-        fig_trend = px.line(trend, x="date", y="demand_qty", title=f"수요 추이 (최근 {trend_days}일)" if trend_days != 365 else "수요 추이 (전체)")
-        fig_trend.update_traces(name="실적 수요")
-        if show_forecast_overlay and not forecast_daily.empty:
-            forecast_agg = forecast_daily.groupby("date")["forecast_qty"].sum().reset_index()
-            fig_trend.add_scatter(
-                x=forecast_agg["date"],
-                y=forecast_agg["forecast_qty"],
-                name="예측 수요",
-                line=dict(dash="dash", color="orange"),
-                mode="lines",
-            )
-            latest_dt_trend = pd.to_datetime(latest_date)
-            horizon_end = latest_dt_trend + pd.Timedelta(days=horizon_days)
-            add_ref_vrect(fig_trend, latest_dt_trend, horizon_end, label="예측 구간", fill_color="rgba(255,165,0,0.15)", line_color="orange")
-        add_ref_vline(fig_trend, latest_date, "기준일", line_dash="dot", line_color="gray")
-        fig_trend.update_layout(xaxis_title="일자", yaxis_title="수요량", legend_title=None)
-        fig_trend.update_xaxes(tickformat="%Y-%m-%d")
-        fig_trend.update_yaxes(tickformat=",.0f")
-        fig_trend = apply_plotly_theme(fig_trend)
-        st.plotly_chart(fig_trend, use_container_width=True)
-    with col_trend_inv:
-        fig_inv_trend = px.line(inv_trend, x="date", y="onhand_qty", title=f"재고 추이 (최근 {trend_days}일)" if trend_days != 365 else "재고 추이 (전체)")
-        fig_inv_trend.update_layout(xaxis_title="일자", yaxis_title="재고 수량")
-        fig_inv_trend.update_xaxes(tickformat="%Y-%m-%d")
-        fig_inv_trend.update_yaxes(tickformat=",.0f")
-        fig_inv_trend = apply_plotly_theme(fig_inv_trend)
-        st.plotly_chart(fig_inv_trend, use_container_width=True)
-
-    st.divider()
-    st.markdown("#### 4. 카테고리별 비중")
-    cat_inv_sql = f"""
-    SELECT m.category, COALESCE(SUM(i.onhand_qty), 0) AS onhand_qty
-    FROM sku_master m
-    LEFT JOIN inventory_daily i ON i.sku = m.sku AND i.date = '{latest_date}' {_inv_wh_join(wh)}
-    WHERE 1=1
-    {base_where}
-    GROUP BY m.category
-    ORDER BY onhand_qty DESC
-    """
-    cat_inv = con.execute(cat_inv_sql).fetchdf()
-
-    if not cat_inv.empty and cat_inv["onhand_qty"].sum() > 0:
-        total_inv = cat_inv["onhand_qty"].sum()
-        cat_inv = cat_inv.assign(pct=(cat_inv["onhand_qty"] / total_inv * 100))
-        top5_inv = cat_inv.head(5)
-        others_inv = cat_inv.iloc[5:]
-        if len(others_inv) > 0:
-            others_row = pd.DataFrame([{"category": "Others", "onhand_qty": others_inv["onhand_qty"].sum(), "pct": others_inv["pct"].sum()}])
-            cat_inv_display = pd.concat([top5_inv, others_row], ignore_index=True)
-        else:
-            cat_inv_display = top5_inv.copy()
-        cat_inv_display["category_ko"] = cat_inv_display["category"].map(lambda x: category_map.get(x, x))
-        cat_inv_display["label"] = cat_inv_display.apply(lambda r: f"{r['category_ko']} ({fmt_pct(r['pct'])})", axis=1)
-        fig_cat_inv = px.bar(
-            cat_inv_display,
-            x="onhand_qty",
-            y="label",
-            orientation="h",
-            title="카테고리별 재고 비중 (기준일) — 수량·%",
-            labels={"onhand_qty": "재고 수량", "label": "카테고리"},
-        )
-        fig_cat_inv.update_layout(
-            yaxis={"categoryorder": "total ascending"},
-            bargap=0.6,
-        )
-        fig_cat_inv.update_xaxes(tickformat=",.0f")
-        fig_cat_inv.update_traces(
-            marker_color=["#b5dde8", "#8fc9dc", "#6bb5d0", "#52a0c4", "#4a90b0", "#3d7d98"],
-            marker_line_color="rgba(255,255,255,0.9)",
-            marker_line_width=0.5,
-        )
-        fig_cat_inv = apply_plotly_theme(fig_cat_inv)
-        st.plotly_chart(fig_cat_inv, use_container_width=True)
-    else:
-        st.caption("카테고리별 재고 비중: 데이터 없음")
-
-    # 카테고리별 수요 비중: cat=ALL, sku_pick=ALL 일 때만 표시
-    if cat == "ALL" and sku_pick == "ALL":
-        cat_demand_sql = f"""
-        SELECT m.category, COALESCE(SUM(d.demand_qty), 0) AS demand_qty
-        FROM sku_master m
-        LEFT JOIN demand_daily d ON d.sku = m.sku
-          AND d.date > '{latest_date}'::DATE - INTERVAL 30 DAY AND d.date <= '{latest_date}'
-        WHERE 1=1
-        {base_where}
-        GROUP BY m.category
-        ORDER BY demand_qty DESC
-        """
-        cat_demand = con.execute(cat_demand_sql).fetchdf()
-        if not cat_demand.empty and cat_demand["demand_qty"].sum() > 0:
-            total_demand = cat_demand["demand_qty"].sum()
-            cat_demand = cat_demand.assign(pct=(cat_demand["demand_qty"] / total_demand * 100))
-            top5_demand = cat_demand.head(5)
-            others_demand = cat_demand.iloc[5:]
-            if len(others_demand) > 0:
-                others_row_d = pd.DataFrame([{"category": "Others", "demand_qty": others_demand["demand_qty"].sum(), "pct": others_demand["pct"].sum()}])
-                cat_demand_display = pd.concat([top5_demand, others_row_d], ignore_index=True)
-            else:
-                cat_demand_display = top5_demand.copy()
-            cat_demand_display["category_ko"] = cat_demand_display["category"].map(lambda x: category_map.get(x, x))
-            cat_demand_display["label"] = cat_demand_display.apply(lambda r: f"{r['category_ko']} ({fmt_pct(r['pct'])})", axis=1)
-            fig_cat_demand = px.bar(
-                cat_demand_display,
-                x="demand_qty",
-                y="label",
-                orientation="h",
-                title="카테고리별 수요 비중 (최근 30일) — 수량·%",
-                labels={"demand_qty": "수요량", "label": "카테고리"},
-            )
-            fig_cat_demand.update_layout(yaxis={"categoryorder": "total ascending"}, bargap=0.6)
-            fig_cat_demand.update_xaxes(tickformat=",.0f")
-            fig_cat_demand = apply_plotly_theme(fig_cat_demand)
-            st.plotly_chart(fig_cat_demand, use_container_width=True)
-    else:
-        st.caption("카테고리별 수요 비중: 전체 카테고리·전체 SKU 선택 시에만 표시됩니다.")
-
-    st.divider()
-    st.markdown("#### 5. 우선 조치 상위 10건")
+    st.markdown("#### 오늘 할 일(조치) Top 5")
     if not forecast_metrics_df.empty and not forecast_daily.empty:
         lead_time_days_ov = lead_time_days_global
         target_cover_days_ov = target_cover_days_global
         safety_stock_days_ov = safety_stock_days_global
-        moq_ov = st.session_state.get("moq", 0)
+        moq_ov = moq_global
         actions_sql_ov = f"""
         WITH base_sku AS (
           SELECT m.sku, m.sku_name, m.category
@@ -1002,21 +801,25 @@ with tab_exec:
                 return "리드타임 수요 대비 부족"
             return "정책 보충"
         actions_base_ov["reason"] = actions_base_ov.apply(reason_ov, axis=1)
-        top10 = actions_base_ov[actions_base_ov["recommended_order_qty"] > 0].copy()
-        top10 = top10.sort_values(["estimated_stockout_date", "recommended_order_qty"], ascending=[True, False], na_position="last").head(10)
-        display_top10 = top10[["sku", "sku_name", "warehouse", "estimated_stockout_date", "coverage_days", "recommended_order_qty", "reason"]].copy()
-        display_top10 = display_top10.rename(columns={"estimated_stockout_date": "예상 품절일(예측)", "coverage_days": "DOS(예측)"})
-        if display_top10.empty:
+        top5_actions = actions_base_ov[actions_base_ov["recommended_order_qty"] > 0].copy()
+        top5_actions = top5_actions.sort_values(["estimated_stockout_date", "recommended_order_qty"], ascending=[True, False], na_position="last").head(5)
+        display_top5 = top5_actions[["sku", "sku_name", "warehouse", "estimated_stockout_date", "coverage_days", "recommended_order_qty", "reason"]].copy()
+        display_top5 = display_top5.rename(columns={"estimated_stockout_date": "예상 품절일", "coverage_days": "커버리지(DOS)"})
+        if display_top5.empty:
             st.caption("권장 발주 대상이 없습니다.")
         else:
-            st.dataframe(display_top10, use_container_width=True)
-            st.caption("전체 목록·정책 변경은 **발주·조치** 탭에서 확인하세요.")
+            disp = display_top5.copy()
+            disp["예상 품절일"] = disp["예상 품절일"].apply(lambda v: fmt_date(v) if pd.notna(v) else "—")
+            disp["커버리지(DOS)"] = disp["커버리지(DOS)"].apply(lambda v: fmt_days(v) + "일" if pd.notna(v) else "—")
+            disp["recommended_order_qty"] = disp["recommended_order_qty"].apply(fmt_qty)
+            st.dataframe(disp, use_container_width=True, hide_index=True)
+            st.caption("**발주·조치** 탭에서 전체 보기·정책 변경을 확인하세요.")
     else:
         st.caption("예측 결과가 있을 때만 표시됩니다. 예측 설정 적용 후 새로고침하세요.")
 
 with tab_health:
     st.subheader("재고 적정성")
-    st.caption("부족·적정·과잉 구간별 SKU 수와 DOS 분포 (" + basis_label + "). 품절 위험·발주·조치 탭으로 이어서 조치하세요.")
+    st.caption("현재 기준: " + basis_label + ". 부족·적정·과잉 구간별 SKU 수와 DOS 분포. 품절 위험·발주·조치 탭으로 이어서 조치하세요.")
     if summary_stockout_cnt > 0:
         st.info("**바로 할 일:** 커버리지 부족 SKU가 있습니다. **품절 위험**·**발주·조치** 탭에서 발주 검토하세요.")
     st.markdown("**기준 설정**")
@@ -1126,7 +929,7 @@ with tab_health:
             add_ref_vline(fig_hist, over_days, f"과잉 기준선({over_days}일)", line_dash="dash", line_color="steelblue")
             fig_hist = apply_plotly_theme(fig_hist)
             st.plotly_chart(fig_hist, use_container_width=True)
-            st.caption(f"부족 비율 {pct_short:.1f}% (기준선 {shortage_days}일 미만) · 과잉 비율 {pct_over:.1f}% (기준선 {over_days}일 초과)")
+            st.caption(f"부족: DOS가 {shortage_days}일 미만인 SKU 비율 {pct_short:.1f}%. 과잉: DOS가 {over_days}일 초과인 SKU 비율 {pct_over:.1f}%.")
         else:
             st.caption(f"DOS 데이터 없음. 최근 {health_dos_basis_days}일 수요 0이거나 필터 결과 없음.")
 
@@ -1165,8 +968,7 @@ with tab_health:
         fig_scatter = apply_plotly_theme(fig_scatter)
         st.plotly_chart(fig_scatter, use_container_width=True)
         st.caption(
-            "**우하** 고수요·저DOS → 최우선 발주 | **좌하** 저수요·저DOS → 주문주기 검토 | "
-            "**우상** 고수요·고DOS → 적정 | **좌상** 저수요·고DOS → 과잉·재고 조정."
+            "우하: 고수요·저DOS → 최우선 발주. 좌하: 저수요·저DOS → 주문주기 검토. 우상: 고수요·고DOS → 적정. 좌상: 저수요·고DOS → 과잉·재고 조정."
         )
     else:
         st.caption("DOS가 있는 SKU가 없어 산점도를 표시하지 않습니다.")
@@ -1203,14 +1005,15 @@ with tab_health:
     display_health_fmt = display_health.copy()
     display_health_fmt["onhand_qty"] = display_health_fmt["onhand_qty"].apply(lambda v: fmt_qty(v))
     display_health_fmt["demand_30d"] = display_health_fmt["demand_30d"].apply(lambda v: fmt_qty(v))
-    display_health_fmt["avg_daily_demand_Nd"] = display_health_fmt["avg_daily_demand_Nd"].apply(lambda v: fmt_qty(v))
-    display_health_fmt["coverage_days"] = display_health_fmt["coverage_days"].apply(lambda v: fmt_days(v) if pd.notna(v) else "—")
+    display_health_fmt["avg_daily_demand_Nd"] = display_health_fmt["avg_daily_demand_Nd"].apply(lambda v: fmt_rate_per_day(v))
+    display_health_fmt["coverage_days"] = display_health_fmt["coverage_days"].apply(lambda v: fmt_days(v) + "일" if pd.notna(v) else "—")
     st.dataframe(display_health_fmt, use_container_width=True, hide_index=True)
+    st.caption("‘수요 없음(최근 N일)’ 구간은 최근 수요가 0인 재고로, 재고 정리 후보로 검토하세요.")
     st.download_button("재고 적정성 목록 내려받기 (CSV)", data=display_health.to_csv(index=False).encode("utf-8-sig"), file_name="health_list.csv", mime="text/csv", key="dl_health")
 
 with tab_stockout:
     st.subheader("품절 위험")
-    st.caption("N일 이내 품절 예상 SKU·예상 품절일·위험등급. 긴급부터 확인한 뒤 **발주·조치** 탭에서 권장 발주수량 확인하세요.")
+    st.caption("현재 기준: " + basis_label + ". N일 이내 품절 예상 SKU·예상 품절일·위험등급. 긴급부터 확인한 뒤 **발주·조치** 탭에서 권장 발주수량 확인하세요.")
     if summary_stockout_cnt > 0:
         st.info("**바로 할 일:** 아래 목록에서 긴급 SKU를 확인한 뒤 **발주·조치** 탭에서 권장 발주수량을 확인하세요.")
     st.markdown("**조회 조건**")
@@ -1347,36 +1150,44 @@ with tab_stockout:
     display_risk = display_risk.rename(columns={
         "coverage_days": "커버리지(DOS)",
         "estimated_stockout_date": "예상 품절일",
-        "avg_daily_demand_14d": "avg_daily_demand",
+        "avg_daily_demand_14d": "일수요",
+        "priority_score": "우선순위(수요/커버리지)",
     })
     sort_options = ["예상 품절일 빠른 순", "우선순위 점수 높은 순", "커버리지(DOS) 짧은 순", "SKU"]
     risk_sort = st.selectbox("정렬 기준", options=sort_options, index=0, key="risk_sort_by")
     if risk_sort == "예상 품절일 빠른 순":
         sort_col = "예상 품절일"
+        pri_col = "우선순위(수요/커버리지)" if "우선순위(수요/커버리지)" in display_risk.columns else None
         if sort_col in display_risk.columns:
-            display_risk = display_risk.sort_values([sort_col, "priority_score"], ascending=[True, False], na_position="last")
-    elif risk_sort == "우선순위 점수 높은 순" and "priority_score" in display_risk.columns:
-        display_risk = display_risk.sort_values("priority_score", ascending=False, na_position="last")
+            by = [sort_col, pri_col] if pri_col else [sort_col]
+            display_risk = display_risk.sort_values(by, ascending=[True, False] if pri_col else [True], na_position="last")
+    elif risk_sort == "우선순위 점수 높은 순" and "우선순위(수요/커버리지)" in display_risk.columns:
+        display_risk = display_risk.sort_values("우선순위(수요/커버리지)", ascending=False, na_position="last")
     elif risk_sort == "커버리지(DOS) 짧은 순" and "커버리지(DOS)" in display_risk.columns:
         display_risk = display_risk.sort_values("커버리지(DOS)", ascending=True, na_position="last")
     elif risk_sort == "SKU":
         display_risk = display_risk.sort_values("sku", ascending=True)
     date_col = "예상 품절일"
     display_risk_fmt = display_risk.copy()
-    for qty_col in ["onhand_qty", "avg_daily_demand", "demand_7d"]:
-        if qty_col in display_risk_fmt.columns:
-            display_risk_fmt[qty_col] = display_risk_fmt[qty_col].apply(lambda v: fmt_qty(v))
+    if "onhand_qty" in display_risk_fmt.columns:
+        display_risk_fmt["onhand_qty"] = display_risk_fmt["onhand_qty"].apply(lambda v: fmt_qty(v))
+    if "일수요" in display_risk_fmt.columns:
+        display_risk_fmt["일수요"] = display_risk_fmt["일수요"].apply(lambda v: fmt_rate_per_day(v) if pd.notna(v) else "—")
+    if "demand_7d" in display_risk_fmt.columns:
+        display_risk_fmt["demand_7d"] = display_risk_fmt["demand_7d"].apply(lambda v: fmt_qty(v))
     if "커버리지(DOS)" in display_risk_fmt.columns:
-        display_risk_fmt["커버리지(DOS)"] = display_risk_fmt["커버리지(DOS)"].apply(lambda v: fmt_days(v) if pd.notna(v) else "—")
+        display_risk_fmt["커버리지(DOS)"] = display_risk_fmt["커버리지(DOS)"].apply(lambda v: fmt_days(v) + "일" if pd.notna(v) else "—")
     if date_col in display_risk_fmt.columns:
         display_risk_fmt[date_col] = display_risk_fmt[date_col].apply(lambda v: fmt_date(v) if pd.notna(v) else "—")
     st.dataframe(display_risk_fmt, use_container_width=True, hide_index=True)
     st.download_button("품절 위험 목록 내려받기 (CSV)", data=display_risk.to_csv(index=False).encode("utf-8-sig"), file_name="risk_list.csv", mime="text/csv", key="dl_risk")
-    st.caption("우선순위 점수 = 7일 수요 ÷ 커버리지(DOS). 예상 품절일은 " + ("누적 예측 수요로 재고 소진되는 첫 날" if use_forecast_risk else "기준일 + DOS(올림)일") + " (" + basis_label + ").")
+    st.caption("우선순위(수요/커버리지) = 7일 수요 ÷ 커버리지(DOS). 예상 품절일은 " + ("누적 예측 수요로 재고 소진되는 첫 날" if use_forecast_risk else "기준일 + DOS(올림)일") + " (" + basis_label + ").")
 
 with tab_actions:
     st.subheader("발주·조치")
-    st.caption("정책(리드타임·목표 커버리지·안전재고·최소발주수량)에 따른 권장 발주수량. 예상 품절일 빠른 순으로 조치하세요.")
+    st.caption("현재 기준: " + basis_label + ". 권장 발주 = 목표 재고(리드타임 수요 + 목표 커버리지 + 안전재고) − 현재 재고.")
+    if moq_global == 0:
+        st.caption("MOQ(최소발주수량) 없음.")
     if summary_stockout_cnt > 0:
         st.info("**바로 할 일:** 정렬 기준을 예상 품절일로 두고 긴급 SKU부터 발주하세요.")
     # 기준 모드·정책 파라미터는 사이드바 전역 설정 사용
@@ -1412,7 +1223,7 @@ with tab_actions:
         li.warehouse,
         COALESCE(li.onhand_qty, 0) AS onhand_qty,
         COALESCE(ad.avg_daily_demand_14d, 0) AS avg_daily_demand_14d,
-        ROUND(COALESCE(ad.avg_daily_demand_14d, 0) * 10, 0) AS reorder_point,
+        ROUND(COALESCE(ad.avg_daily_demand_14d, 0) * ({lead_time_days_global} + {safety_stock_days_global}), 0) AS reorder_point,
         CASE WHEN COALESCE(ad.avg_daily_demand_14d, 0) = 0 THEN NULL
           ELSE ROUND(COALESCE(li.onhand_qty, 0) / ad.avg_daily_demand_14d, 1) END AS coverage_days
       FROM base_sku b
@@ -1533,7 +1344,7 @@ with tab_actions:
         "coverage_days": "커버리지(DOS)",
     })
     out["onhand_qty"] = out["onhand_qty"].apply(lambda x: fmt_qty(x))
-    out["avg_daily_demand_14d"] = out["avg_daily_demand_14d"].apply(lambda x: fmt_days(x) if pd.notna(x) else "—")
+    out["avg_daily_demand_14d"] = out["avg_daily_demand_14d"].apply(lambda x: fmt_rate_per_day(x) if pd.notna(x) else "—")
     out["커버리지(DOS)"] = out["커버리지(DOS)"].apply(lambda x: fmt_days(x) if pd.notna(x) else "—")
     out["target_stock"] = out["target_stock"].apply(lambda x: fmt_qty(x))
     out["recommended_order_qty"] = out["recommended_order_qty"].apply(lambda x: fmt_qty(x))
@@ -1546,7 +1357,7 @@ with tab_actions:
 
 with tab_movements:
     st.subheader("입출고 추적")
-    st.caption("기간 내 입고·출고·순증감과 거래 상세. 재고 변동 원인 파악·대량 거래 확인에 활용하세요.")
+    st.caption("현재 기준: " + basis_label + ". 기간 내 입고·출고·순증감과 거래 상세. 재고 변동 원인 파악·대량 거래 확인에 활용하세요.")
     if inv_txn is None or len(inv_txn) == 0:
         st.info("입출고 거래(inventory_txn) 데이터가 없습니다. CSV를 적재하면 입출고 차트와 거래 목록이 표시됩니다.")
     else:
@@ -1677,11 +1488,17 @@ with tab_movements:
             if txn_list.empty:
                 st.caption("필터 조건에 맞는 거래가 없습니다.")
             else:
-                st.dataframe(txn_list, use_container_width=True)
+                _disp = txn_list.copy()
+                if "qty" in _disp.columns:
+                    _disp["qty"] = _disp["qty"].apply(lambda v: fmt_qty(v) if pd.notna(v) else "—")
+                st.dataframe(_disp, use_container_width=True)
         else:
             st.markdown("**수량 큰 순 상위 50건 (주요 거래)**")
             if txn_top50.empty:
                 st.caption("필터 조건에 맞는 거래가 없습니다.")
             else:
-                st.dataframe(txn_top50, use_container_width=True)
+                _disp = txn_top50.copy()
+                if "qty" in _disp.columns:
+                    _disp["qty"] = _disp["qty"].apply(lambda v: fmt_qty(v) if pd.notna(v) else "—")
+                st.dataframe(_disp, use_container_width=True)
         st.caption("일자 = 거래일 기준. 수량: 입고(+) / 출고(−).")
