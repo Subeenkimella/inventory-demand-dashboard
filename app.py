@@ -556,12 +556,10 @@ with tab_overview:
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("전체 재고 수량", fmt_qty(total_onhand))
-    c1.caption("현재 기준 재고 수량")
-    c2.metric("최근 7일 수요 합계", fmt_qty(demand_cur_7))
+    c2.metric("전체 수요 합계(최근 7일)", fmt_qty(demand_cur_7))
     c3.metric("Days of Supply(재고커버일수, DOS) 중앙값", median_dos_str)
     if pd.notna(median_dos_val) and median_dos_val == median_dos_val:
         _cmp = "정책 기준(" + str(SHORTAGE_DAYS) + "일) 대비 여유 있음" if median_dos_val >= SHORTAGE_DAYS else "정책 기준(" + str(SHORTAGE_DAYS) + "일) 미만으로 주의 필요"
-        c3.caption(f"정책 기준 대비 {_cmp}.")
     else:
         c3.caption("DOS는 현재 기준 재고 수량 ÷ 일평균 수요로 산출")
     c4.metric("품절 위험 SKU 수", fmt_qty(stockout_sku_cnt))
@@ -596,7 +594,7 @@ with tab_overview:
             st.caption("카테고리가 전체일 때만 표시됩니다.")
 
     st.divider()
-    st.markdown("**지금 가장 먼저 봐야 할 이유**")
+    st.markdown("**우선 검토 필요 건**")
     col_a, col_b, col_c = st.columns(3)
     if not base_df.empty:
         urgent_mask = base_df["상태"] == "긴급"
