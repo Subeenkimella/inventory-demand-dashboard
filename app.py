@@ -513,10 +513,10 @@ with col_boxes:
     st.markdown(forecast_html, unsafe_allow_html=True)
 
 tab_overview, tab_cause, tab_time, tab_action = st.tabs([
-    "Overview (요약)",
+    "Overview",
     "재고 위험 원인 분석",
     "품절 발생 시점 분석",
-    "권장 발주·재고 조정",
+    "권장 발주·재고 분석",
 ])
 
 # ========== 1) Overview (요약) — 1) 지금 재고 상태는 안전한가? ==========
@@ -538,17 +538,16 @@ with tab_overview:
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("전체 재고 수량", fmt_qty(total_onhand))
-    c1.caption("정책 기준 대비 절대량 확인용입니다.")
+    c1.caption("현재 기준 재고 수량")
     c2.metric("최근 7일 수요 합계", fmt_qty(demand_cur_7))
-    c2.caption("수요 강도에 따라 재고 수준을 함께 봐야 합니다.")
-    c3.metric("재고 커버 일수(Days of Supply, DOS) 중앙값", median_dos_str)
+    c3.metric("Days of Supply(재고커버일수, DOS) 중앙값", median_dos_str)
     if pd.notna(median_dos_val) and median_dos_val == median_dos_val:
         _cmp = "정책 기준(" + str(SHORTAGE_DAYS) + "일) 대비 여유 있음" if median_dos_val >= SHORTAGE_DAYS else "정책 기준(" + str(SHORTAGE_DAYS) + "일) 미만으로 주의 필요"
         c3.caption(f"정책 기준 대비 {_cmp}.")
     else:
-        c3.caption("DOS는 재고 ÷ 일평균 수요로 산출됩니다.")
+        c3.caption("DOS는 현재 기준 재고 수량 ÷ 일평균 수요로 산출")
     c4.metric("품절 위험 SKU 수", fmt_qty(stockout_sku_cnt))
-    c4.caption(f"정책 기준 {SHORTAGE_DAYS}일 이내 소진 예상 SKU 수입니다.")
+    c4.caption(f"정책 기준 {SHORTAGE_DAYS}일 이내 소진 예상 SKU 수")
 
     st.divider()
     col_pie, col_bar = st.columns(2)
