@@ -1,5 +1,6 @@
 # test commit - 
 
+import re
 import streamlit as st
 import pandas as pd
 import duckdb
@@ -222,24 +223,8 @@ def _inv_wh_where(wh):
     return f"AND warehouse = '{wh}'" if wh != "ALL" else ""
 
 
-FORECAST_HORIZON_DAYS = 60
-FORECAST_LOOKBACK_DAYS = 180
-
-# --- 사이드바: 조회 조건 + 정책 설정 ---
+# --- 사이드바: 조회 조건만 (정책/예측은 관리자 탭에서) ---
 st.sidebar.header("조회 조건")
-st.sidebar.subheader("정책 설정")
-lead_time_days = st.sidebar.number_input("리드타임 LT (일)", min_value=1, value=7, step=1, key="lead_time_days")
-shortage_days = st.sidebar.number_input("품절 위험 기준 DOS (일)", min_value=1, value=14, step=1, key="shortage_days")
-over_days = st.sidebar.number_input("재고 과다 기준 DOS (일)", min_value=1, value=60, step=1, key="over_days")
-dos_basis_days = st.sidebar.number_input("DOS 산정 기간 (최근 N일)", min_value=1, value=14, step=1, key="dos_basis_days")
-if over_days <= shortage_days:
-    over_days = shortage_days + 1
-    st.sidebar.warning("재고 과다 기준이 품절 위험 기준 이하라 자동 보정했습니다.")
-SHORTAGE_DAYS = int(shortage_days)
-OVER_DAYS = int(over_days)
-LEAD_TIME_DAYS = int(lead_time_days)
-DOS_BASIS_DAYS = int(dos_basis_days)
-st.sidebar.divider()
 all_dates = con.execute("SELECT DISTINCT date FROM inventory_daily ORDER BY date DESC").fetchdf()
 date_opts = all_dates["date"].astype(str).tolist() if not all_dates.empty else []
 default_date = date_opts[0] if date_opts else None
@@ -291,8 +276,30 @@ if base_date is None:
 base_where = get_base_sku_where(cat, wh, sku_pick)
 base_date_ts = pd.to_datetime(base_date)
 
+# --- 정책·예측 설정: 관리자 탭에서 설정한 값 사용 (session_state, 없으면 기본값) ---
+lead_time_days = int(st.session_state.get("admin_lead_time_days", 7))
+shortage_days = int(st.session_state.get("admin_shortage_days", 14))
+over_days = int(st.session_state.get("admin_over_days", 60))
+dos_basis_days = int(st.session_state.get("admin_dos_basis_days", 14))
+if over_days <= shortage_days:
+    over_days = shortage_days + 1
+    st.session_state["admin_over_days"] = over_days
+SHORTAGE_DAYS = shortage_days
+OVER_DAYS = over_days
+LEAD_TIME_DAYS = lead_time_days
+DOS_BASIS_DAYS = dos_basis_days
+
+MODEL_NAME = st.session_state.get("admin_forecast_model", "MovingAvg(14)")
+FORECAST_HORIZON_DAYS = int(st.session_state.get("admin_forecast_horizon", 60))
+FORECAST_LOOKBACK_DAYS = int(st.session_state.get("admin_forecast_lookback", 180))
+# MovingAvg(N)에서 N 추출, 없으면 14
+if "MovingAvg" in MODEL_NAME:
+    m = re.search(r"\((\d+)\)", MODEL_NAME)
+    forecast_window_days = int(m.group(1)) if m else 14
+else:
+    forecast_window_days = 14
+
 # --- 예측 계산 (옵션 B: 내부 예측 유지, 실패 시 자동 폴백 A) ---
-MODEL_NAME = "MovingAvg(14)"
 forecast_daily = compute_forecast(
     demand_df=demand,
     sku_df=sku,
@@ -302,7 +309,7 @@ forecast_daily = compute_forecast(
     base_date_str=base_date,
     horizon_days=FORECAST_HORIZON_DAYS,
     lookback_days=FORECAST_LOOKBACK_DAYS,
-    window_days=14,
+    window_days=forecast_window_days,
 )
 latest_inv_df = con.execute(
     f"""
@@ -514,11 +521,12 @@ with col_boxes:
         forecast_html = f'<div class="header-info-box"><div class="label">📈 예측</div><div class="value">{forecast_text}</div></div>'
     st.markdown(forecast_html, unsafe_allow_html=True)
 
-tab_overview, tab_cause, tab_time, tab_action = st.tabs([
+tab_overview, tab_cause, tab_time, tab_action, tab_admin = st.tabs([
     "Overview",
     "재고 위험 원인 분석",
     "품절 발생 시점 분석",
-    "권장 발주·재고 분석",
+    "권장 발주·재고 조정",
+    "관리자",
 ])
 
 # ========== 1) Overview (요약) — 1) 지금 재고 상태는 안전한가? ==========
@@ -781,3 +789,28 @@ with tab_action:
         st.dataframe(action_df, use_container_width=True, hide_index=True)
     else:
         st.caption("즉시 발주 또는 재고 조정이 필요한 SKU가 없습니다.")
+
+# ========== 5) 관리자 — 정책 설정 + 예측 모델 설정 ==========
+with tab_admin:
+    st.subheader("정책 설정")
+    st.caption("리드타임·품절 위험·재고 과다 기준과 DOS 산정 기간을 설정합니다. 변경 후 다른 탭에서 즉시 반영됩니다.")
+    a_lt = st.number_input("리드타임 LT (일)", min_value=1, value=st.session_state.get("admin_lead_time_days", 7), key="admin_lead_time_days", step=1)
+    a_short = st.number_input("품절 위험 기준 DOS (일)", min_value=1, value=st.session_state.get("admin_shortage_days", 14), key="admin_shortage_days", step=1)
+    a_over = st.number_input("재고 과다 기준 DOS (일)", min_value=1, value=st.session_state.get("admin_over_days", 60), key="admin_over_days", step=1)
+    a_dos_basis = st.number_input("DOS 산정 기간 (최근 N일)", min_value=1, value=st.session_state.get("admin_dos_basis_days", 14), key="admin_dos_basis_days", step=1)
+    if a_over <= a_short:
+        st.warning("재고 과다 기준이 품절 위험 기준 이하입니다. 저장 시 자동 보정(과다 = 품절위험+1)됩니다.")
+    st.divider()
+    st.subheader("예측 모델 설정")
+    st.caption("수요 예측에 사용할 모델과 학습·예측 기간을 설정합니다.")
+    model_opts = ["MovingAvg(7)", "MovingAvg(14)", "MovingAvg(30)", "SeasonalNaive(7)"]
+    idx = model_opts.index(st.session_state.get("admin_forecast_model", "MovingAvg(14)")) if st.session_state.get("admin_forecast_model", "MovingAvg(14)") in model_opts else 1
+    st.selectbox(
+        "예측 모델",
+        options=model_opts,
+        index=idx,
+        key="admin_forecast_model",
+        help="MovingAvg(N): 최근 N일 수요 평균으로 예측. SeasonalNaive(7): 최근 7일 패턴 반복.",
+    )
+    st.number_input("예측 기간 (일)", min_value=7, value=st.session_state.get("admin_forecast_horizon", 60), key="admin_forecast_horizon", step=1)
+    st.number_input("학습 구간 (일)", min_value=30, value=st.session_state.get("admin_forecast_lookback", 180), key="admin_forecast_lookback", step=1)
