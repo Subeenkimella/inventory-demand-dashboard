@@ -515,6 +515,15 @@ except Exception:
     summary_overstock_cnt = 0
 
 # --- Tabs ---
+# 탭 바 위·아래 간격 동일
+st.markdown("""
+<style>
+  [data-testid="stTabs"] > div:first-child {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+  }
+</style>
+""", unsafe_allow_html=True)
 tab_exec, tab_health, tab_stockout, tab_actions, tab_movements = st.tabs([
     "Overview",
     "재고 적정성",
