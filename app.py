@@ -400,7 +400,7 @@ st.sidebar.selectbox(
 
 st.sidebar.divider()
 st.sidebar.header("예측 설정")
-st.sidebar.caption("수요 예측 모델·기간. Overview·리스크·발주 탭에 반영")
+st.sidebar.caption("수요 예측 모델을 이용하여 미래 수요와 재고 커버 일수를 예측")
 model_opts = ["MovingAvg(7)", "MovingAvg(14)", "MovingAvg(30)", "SeasonalNaive(7)"]
 horizon_opts = ["ALL", 7, 14, 30, 60]
 lookback_opts = ["ALL", 90, 180, 365]
@@ -495,7 +495,7 @@ header_box_html = f"""
 col_title, col_box = st.columns([2.2, 1])
 with col_title:
     st.title("📦 재고·수요 모니터링 대시보드")
-    st.caption("기준일 기준 재고·수요·예측을 한 화면에서 확인하고, 상태·리스크·조치를 바로 파악할 수 있습니다.")
+    st.caption("기준일 기준 재고·수요·예측을 한 화면에서 확인하고, 재고 상태를 미리 파악하여 조치합니다.")
 with col_box:
     st.markdown(header_box_html, unsafe_allow_html=True)
 st.markdown("---")
@@ -580,7 +580,7 @@ tab_exec, tab_health, tab_stockout, tab_actions, tab_movements = st.tabs([
 
 
 with tab_exec:
-    st.markdown("#### 1. 현황 요약 (기준일 기준)")
+    st.markdown("#### Overview")
     ov_trend_opts = [30, 60, 90, 180, "ALL"]
     ov_dos_opts = [7, 14, 30]
     col_ov1, col_ov2 = st.columns(2)
