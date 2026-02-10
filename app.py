@@ -515,12 +515,18 @@ except Exception:
     summary_overstock_cnt = 0
 
 # --- Tabs ---
-# 탭 바 위·아래 간격 동일
+# 위 바 - 글씨 - 아래 바 간격 동일
 st.markdown("""
 <style>
   [data-testid="stTabs"] > div:first-child {
     padding-top: 1rem;
     padding-bottom: 1rem;
+  }
+  [data-testid="stTabs"] [role="tab"],
+  [data-testid="stTabs"] [data-baseweb="tab"],
+  [data-testid="stTabs"] > div:first-child > div {
+    padding-top: 0.75rem !important;
+    padding-bottom: 0.75rem !important;
   }
 </style>
 """, unsafe_allow_html=True)
