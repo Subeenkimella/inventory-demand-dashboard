@@ -555,14 +555,14 @@ with tab_overview:
     median_dos_str = f"{median_dos_val:,.1f}일" if pd.notna(median_dos_val) and median_dos_val == median_dos_val else "—"
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("전체 재고 수량", fmt_qty(total_onhand))
-    c2.metric("전체 수요 합계(최근 7일)", fmt_qty(demand_cur_7))
+    c1.metric("전체 재고 수량", fmt_qty(total_onhand) + "개")
+    c2.metric("전체 수요 합계(최근 7일)", fmt_qty(demand_cur_7) + "개")
     c3.metric("Days of Supply(재고커버일수, DOS) 중앙값", median_dos_str)
     if pd.notna(median_dos_val) and median_dos_val == median_dos_val:
         _cmp = "정책 기준(" + str(SHORTAGE_DAYS) + "일) 대비 여유 있음" if median_dos_val >= SHORTAGE_DAYS else "정책 기준(" + str(SHORTAGE_DAYS) + "일) 미만으로 주의 필요"
     else:
         c3.caption("DOS는 현재 기준 재고 수량 ÷ 일평균 수요로 산출")
-    c4.metric("품절 위험 SKU 수", fmt_qty(stockout_sku_cnt))
+    c4.metric("품절 위험 SKU 수", fmt_qty(stockout_sku_cnt) + "개")
 
     st.divider()
     col_pie, col_bar = st.columns(2)
@@ -570,7 +570,7 @@ with tab_overview:
         st.markdown("**재고 상태 분포**")
         if not base_df.empty:
             status_counts = base_df["상태"].value_counts().rename_axis("상태").reset_index(name="count")
-            color_map = {"긴급": "#f08a9a", "주의": "#fbbf8a", "안정": "#86efac"}
+            color_map = {"긴급": "#e85a6f", "주의": "#f9a04d", "안정": "#4ade80"}
             fig_pie = px.pie(status_counts, names="상태", values="count", color="상태", color_discrete_map=color_map, hole=0.4)
             fig_pie.update_layout(showlegend=True)
             fig_pie = apply_plotly_theme(fig_pie)
@@ -583,7 +583,7 @@ with tab_overview:
             risk_df = base_df[base_df["상태"].isin(["긴급", "주의"])].copy()
             if not risk_df.empty:
                 bar_df = risk_df.groupby("category")["sku"].nunique().reset_index(name="risk_sku_cnt")
-                fig_bar = px.bar(bar_df, x="category", y="risk_sku_cnt", color="category", labels={"category": "카테고리", "risk_sku_cnt": "품절 위험 SKU 수"}, color_discrete_sequence=["#93c5fd", "#a5b4fc", "#c4b5fd", "#f9a8d4"])
+                fig_bar = px.bar(bar_df, x="category", y="risk_sku_cnt", color="category", labels={"category": "카테고리", "risk_sku_cnt": "품절 위험 SKU 수"}, color_discrete_sequence=["#60a5fa", "#818cf8", "#a78bfa", "#f472b6"])
                 fig_bar = apply_plotly_theme(fig_bar)
                 st.plotly_chart(fig_bar, use_container_width=True)
             else:
@@ -652,7 +652,7 @@ with tab_cause:
             )
             fig.update_layout(xaxis_title="최근 30일 수요(개)", yaxis_title="재고 커버 일수(DOS)")
             add_ref_hline(fig, SHORTAGE_DAYS, f"품절 위험 기준({SHORTAGE_DAYS}일)", line_color="crimson")
-            add_ref_hline(fig, OVER_DAYS, f"재고 과다 검토 기준({OVER_DAYS}일)", line_color="steelblue")
+            add_ref_hline(fig, OVER_DAYS, f"재고 과잉 검토 기준({OVER_DAYS}일)", line_color="steelblue")
             add_ref_vline(fig, demand_p75, "수요 상위 25%", line_color="gray")
             fig = apply_plotly_theme(fig)
             st.plotly_chart(fig, use_container_width=True)
