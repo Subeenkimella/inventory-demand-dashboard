@@ -1,5 +1,6 @@
 # test commit - 
 
+import os
 import re
 import streamlit as st
 import pandas as pd
@@ -78,8 +79,15 @@ def fmt_date(v):
     return str(pd.to_datetime(v).date()) if hasattr(pd.to_datetime(v), "date") else str(v)
 
 
+def _data_file_mtime():
+    """CSV 수정 시 캐시가 무효화되도록 파일 mtime을 캐시 키로 사용."""
+    t1 = os.path.getmtime("inventory_daily.csv") if os.path.exists("inventory_daily.csv") else 0
+    t2 = os.path.getmtime("demand_daily.csv") if os.path.exists("demand_daily.csv") else 0
+    return (t1, t2)
+
+
 @st.cache_data
-def load_data():
+def load_data(_cache_key):
     sku = pd.read_csv("sku_master.csv")
     demand = pd.read_csv("demand_daily.csv", parse_dates=["date"])
     inv = pd.read_csv("inventory_daily.csv", parse_dates=["date"])
@@ -201,7 +209,7 @@ def compute_mape_backtest(demand_df, base_date_str, backtest_days=14, window_day
     return mape_pct, len(errors)
 
 
-sku, demand, inv, inv_txn = load_data()
+sku, demand, inv, inv_txn = load_data(_data_file_mtime())
 con = duckdb.connect(database=":memory:")
 con.register("sku_master", sku)
 con.register("demand_daily", demand)
@@ -541,7 +549,7 @@ with tab_overview:
             worst_state, worst_mark = "주의", "🟠"
 
     risk_cnt = int((base_df["dos_used"].notna() & (base_df["dos_used"] < SHORTAGE_DAYS)).sum()) if not base_df.empty else 0
-    st.markdown(f"{worst_mark} 현재 재고 상태: {worst_state} · DOS 기준 품절 위험 SKU {risk_cnt}건")
+    st.markdown(f"{worst_mark} 현재 재고 상태: {worst_state} · 품절 위험 SKU {risk_cnt}건")
 
 
     median_dos_str = f"{median_dos_val:,.1f}일" if pd.notna(median_dos_val) and median_dos_val == median_dos_val else "—"
