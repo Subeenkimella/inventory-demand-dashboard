@@ -413,71 +413,37 @@ LEFT JOIN demand_30 d30 ON b.sku = d30.sku
 LEFT JOIN demand_14 d14 ON b.sku = d14.sku
 LEFT JOIN demand_7d d7 ON b.sku = d7.sku
 """
-
-# --- 상태 컬럼(상태/마크) 무조건 생성 ---
-def classify_status(est_date, dos):
-    # DOS가 있으면 DOS 기준으로 판단
-    if pd.notna(dos):
-        if dos < LEAD_TIME_DAYS:
-            return "🔴", "긴급"
-        if dos < SHORTAGE_DAYS:
-            return "🟠", "주의"
-        return "🟢", "안정"
-
-    # DOS가 없으면 날짜로 보조 판단
-    est = pd.to_datetime(est_date, errors="coerce")
-    if pd.isna(est):
-        return "🟢", "안정"
-    if est < base_date_ts + pd.Timedelta(days=LEAD_TIME_DAYS):
-        return "🔴", "긴급"
-    if est < base_date_ts + pd.Timedelta(days=SHORTAGE_DAYS):
-        return "🟠", "주의"
-    return "🟢", "안정"
-
-if base_df is None or base_df.empty:
-    base_df = pd.DataFrame()
-    base_df["상태"] = []
-    base_df["_mark"] = []
-else:
-    # dos_used / est_date_used가 아직 없을 수도 있으니 방어
-    if "dos_used" not in base_df.columns:
-        base_df["dos_used"] = base_df.get("coverage_days")
-    if "est_date_used" not in base_df.columns:
-        base_df["est_date_used"] = base_df.get("estimated_stockout_date")
-
-    marks, labels = zip(*[
-        classify_status(r.get("est_date_used"), r.get("dos_used"))
-        for _, r in base_df.iterrows()
-    ])
-    base_df["_mark"] = list(marks)
-    base_df["상태"] = list(labels)
-
-
-
-
 base_df = con.execute(detail_sql).fetchdf()
 
-if use_forecast and not base_df.empty:
-    fm = forecast_metrics_df[["sku", "forecast_dos", "stockout_date_forecast", "forecast_demand_next7"]].drop_duplicates("sku")
-    base_df = base_df.merge(fm, on="sku", how="left")
-    base_df["dos_used"] = base_df.apply(
-        lambda r: r["forecast_dos"] if pd.notna(r.get("forecast_dos")) else r["coverage_days"],
-        axis=1,
-    )
-    base_df["est_date_used"] = base_df.apply(
-        lambda r: r["stockout_date_forecast"] if pd.notna(r.get("stockout_date_forecast")) else r["estimated_stockout_date"],
-        axis=1,
-    )
-    base_df["demand7_used"] = base_df.apply(
-        lambda r: r["forecast_demand_next7"] if pd.notna(r.get("forecast_demand_next7")) else r["demand_7d"],
-        axis=1,
-    )
+# --- (A) base_df 생성 직후: 예측 merge 및 dos_used/est_date_used/demand7_used 생성 ---
+if base_df.empty:
+    # 빈 경우에도 아래 컬럼들이 존재하도록 미리 생성
+    base_df["dos_used"] = pd.Series(dtype="float")
+    base_df["est_date_used"] = pd.Series(dtype="datetime64[ns]")
+    base_df["demand7_used"] = pd.Series(dtype="float")
 else:
-    base_df["dos_used"] = base_df["coverage_days"]
-    base_df["est_date_used"] = base_df["estimated_stockout_date"]
-    base_df["demand7_used"] = base_df["demand_7d"]
+    if use_forecast and not forecast_metrics_df.empty:
+        fm = forecast_metrics_df[["sku", "forecast_dos", "stockout_date_forecast", "forecast_demand_next7"]].drop_duplicates("sku")
+        base_df = base_df.merge(fm, on="sku", how="left")
+        base_df["dos_used"] = base_df.apply(
+            lambda r: r["forecast_dos"] if pd.notna(r.get("forecast_dos")) else r["coverage_days"],
+            axis=1,
+        )
+        base_df["est_date_used"] = base_df.apply(
+            lambda r: r["stockout_date_forecast"] if pd.notna(r.get("stockout_date_forecast")) else r["estimated_stockout_date"],
+            axis=1,
+        )
+        base_df["demand7_used"] = base_df.apply(
+            lambda r: r["forecast_demand_next7"] if pd.notna(r.get("forecast_demand_next7")) else r["demand_7d"],
+            axis=1,
+        )
+    else:
+        base_df["dos_used"] = base_df["coverage_days"]
+        base_df["est_date_used"] = base_df["estimated_stockout_date"]
+        base_df["demand7_used"] = base_df["demand_7d"]
 
 
+# --- (C) 상태 컬럼(상태/_mark) 한 번만 생성 ---
 def classify_status(est_date, dos):
     # 1) DOS가 있으면 DOS를 최우선으로 상태 결정 (운영 관점에서 가장 안정적)
     if pd.notna(dos):
@@ -499,6 +465,22 @@ def classify_status(est_date, dos):
     if est < base_date_ts + pd.Timedelta(days=SHORTAGE_DAYS):
         return "🟠", "주의"
     return "🟢", "안정"
+
+if base_df.empty:
+    base_df["_mark"] = pd.Series(dtype="object")
+    base_df["상태"] = pd.Series(dtype="object")
+else:
+    marks, labels = zip(*[
+        classify_status(r.get("est_date_used"), r.get("dos_used"))
+        for _, r in base_df.iterrows()
+    ])
+    base_df["_mark"] = list(marks)
+    base_df["상태"] = list(labels)
+
+base_df["priority_score"] = base_df.apply(
+    lambda r: (r.get("demand7_used") or 0) / max((r.get("dos_used") or 1), 1),
+    axis=1,
+)
 
 
 # --- 상단 헤더: 왼쪽 타이틀 + 오른쪽 상단 정책/예측 박스 2개 ---
