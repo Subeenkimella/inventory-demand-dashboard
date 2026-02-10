@@ -14,6 +14,17 @@ st.markdown("""
   [data-testid="stMetricValue"] { font-size: 1.5rem !important; font-weight: 600; }
   [data-testid="stMetricLabel"] { font-size: 0.9rem !important; color: #555; }
   .stCaptionContainer { font-size: 0.85rem !important; color: #666; }
+  .header-info-box {
+    padding: 0.6rem 0.9rem;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    margin-bottom: 0.5rem;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+  }
+  .header-info-box .label { font-weight: 600; color: #64748b; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.2rem; }
+  .header-info-box .value { color: #0f172a; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -451,15 +462,21 @@ base_df["priority_score"] = base_df.apply(
     axis=1,
 )
 
-# --- 상단 헤더: 정책 기준 + 예측 사용 여부 배지 ---
-st.title("재고·수요 운영 대시보드")
-badge_policy = f"정책 기준: DOS < {SHORTAGE_DAYS}일 품절 위험 · DOS > {OVER_DAYS}일 재고 과다 검토 · LT {LEAD_TIME_DAYS}일"
-if use_forecast:
-    badge_forecast = f"예측 사용: {MODEL_NAME} · 학습 {FORECAST_LOOKBACK_DAYS}일 · 예측 {FORECAST_HORIZON_DAYS}일 · 신뢰도 {forecast_confidence}"
-else:
-    badge_forecast = "예측 미사용(실적 기반) — Days of Supply (재고 커버 일수, DOS)만 사용"
-st.markdown(f"🔧 {badge_policy}")
-st.markdown(f"📈 {badge_forecast}")
+# --- 상단 헤더: 왼쪽 타이틀 + 오른쪽 상단 정책/예측 박스 2개 ---
+col_title, col_boxes = st.columns([2, 1])
+with col_title:
+    st.title("재고·수요 운영 대시보드")
+with col_boxes:
+    policy_text = f"DOS < {SHORTAGE_DAYS}일 품절 위험 · DOS > {OVER_DAYS}일 재고 과다 검토 · LT {LEAD_TIME_DAYS}일"
+    policy_html = f'<div class="header-info-box"><div class="label">🔧 정책 기준</div><div class="value">{policy_text}</div></div>'
+    st.markdown(policy_html, unsafe_allow_html=True)
+    if use_forecast:
+        forecast_text = f"{MODEL_NAME} · 학습 {FORECAST_LOOKBACK_DAYS}일 · 예측 {FORECAST_HORIZON_DAYS}일 · 신뢰도 {forecast_confidence}"
+        forecast_html = f'<div class="header-info-box"><div class="label">📈 예측 사용</div><div class="value">{forecast_text}</div></div>'
+    else:
+        forecast_text = "실적 기반 — Days of Supply (재고 커버 일수, DOS)만 사용"
+        forecast_html = f'<div class="header-info-box"><div class="label">📈 예측</div><div class="value">{forecast_text}</div></div>'
+    st.markdown(forecast_html, unsafe_allow_html=True)
 
 tab_overview, tab_cause, tab_time, tab_action = st.tabs([
     "Overview (요약)",
