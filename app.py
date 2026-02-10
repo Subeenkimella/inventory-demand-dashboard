@@ -558,6 +558,17 @@ div[data-testid="stTabs"] [data-baseweb="tab-panel"]{
 """, unsafe_allow_html=True)
 
 
+# --- Tabs (MUST create tab variables before using with tab_exec) ---
+tab_exec, tab_health, tab_stockout, tab_actions, tab_movements = st.tabs([
+    "Overview",
+    "재고 적정성",
+    "품절 위험",
+    "발주·조치",
+    "입출고 추적",
+])
+
+
+
 with tab_exec:
     st.markdown("#### 1. 현황 요약 (기준일 기준)")
     ov_trend_opts = [30, 60, 90, 180, "ALL"]
