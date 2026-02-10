@@ -523,8 +523,8 @@ with col_boxes:
 
 tab_overview, tab_cause, tab_time, tab_action, tab_admin = st.tabs([
     "Overview",
-    "재고 위험 원인 분석",
-    "품절 발생 시점 분석",
+    "재고 위험 SKU 분석",
+    "품절 발생 SKU 분석",
     "권장 발주·재고 분석",
     "관리자 페이지(Optional)",
 ])
@@ -711,7 +711,7 @@ with tab_time:
     else:
         st.caption("예상 품절일 정보가 없습니다.")
 
-    st.markdown("**예상 품절일·재고 커버 일수(DOS)·리드타임 대비 여부**" + (" (예측)" if use_forecast else " (실적 기반)"))
+    st.markdown("**[SKU 분석] 예상 품절일·DOS·리드타임 대비 상태 확인**" + (" (예측)" if use_forecast else " (실적 기반)"))
     show_time = time_df[time_df["dos_used"].notna()].copy()
     show_time = show_time.sort_values(["상태", "est_date_used"], ascending=[True, True])
     if not show_time.empty:
