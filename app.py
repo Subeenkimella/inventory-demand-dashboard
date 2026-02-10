@@ -220,16 +220,24 @@ def _inv_wh_where(wh):
     return f"AND warehouse = '{wh}'" if wh != "ALL" else ""
 
 
-# 정책 상수 (품절 위험/재고 과다/리드타임 기준)
-SHORTAGE_DAYS = 14   # 재고 커버 일수(Days of Supply, DOS) 이하면 품절 위험
-OVER_DAYS = 60       # DOS 초과면 재고 과다 검토
-LEAD_TIME_DAYS = 7   # Lead Time (리드타임, LT)
-DOS_BASIS_DAYS = 14  # DOS 산정 시 최근 N일 평균 일수요
 FORECAST_HORIZON_DAYS = 60
 FORECAST_LOOKBACK_DAYS = 180
 
-# --- 사이드바: 공통 필터만 (카테고리 / 창고 / SKU / 기준일) ---
+# --- 사이드바: 조회 조건 + 정책 설정 ---
 st.sidebar.header("조회 조건")
+st.sidebar.subheader("정책 설정")
+lead_time_days = st.sidebar.number_input("리드타임 LT (일)", min_value=1, value=7, step=1, key="lead_time_days")
+shortage_days = st.sidebar.number_input("품절 위험 기준 DOS (일)", min_value=1, value=14, step=1, key="shortage_days")
+over_days = st.sidebar.number_input("재고 과다 기준 DOS (일)", min_value=1, value=60, step=1, key="over_days")
+dos_basis_days = st.sidebar.number_input("DOS 산정 기간 (최근 N일)", min_value=1, value=14, step=1, key="dos_basis_days")
+if over_days <= shortage_days:
+    over_days = shortage_days + 1
+    st.sidebar.warning("재고 과다 기준이 품절 위험 기준 이하라 자동 보정했습니다.")
+SHORTAGE_DAYS = int(shortage_days)
+OVER_DAYS = int(over_days)
+LEAD_TIME_DAYS = int(lead_time_days)
+DOS_BASIS_DAYS = int(dos_basis_days)
+st.sidebar.divider()
 all_dates = con.execute("SELECT DISTINCT date FROM inventory_daily ORDER BY date DESC").fetchdf()
 date_opts = all_dates["date"].astype(str).tolist() if not all_dates.empty else []
 default_date = date_opts[0] if date_opts else None
@@ -488,7 +496,12 @@ col_title, col_boxes = st.columns([2, 1])
 with col_title:
     st.title("재고·수요 운영 대시보드")
 with col_boxes:
-    policy_text = f"DOS < {SHORTAGE_DAYS}일 품절 위험 · DOS > {OVER_DAYS}일 재고 과다 검토 · LT {LEAD_TIME_DAYS}일"
+    policy_text = (
+        f"🔴 긴급: DOS < LT({LEAD_TIME_DAYS}일) | "
+        f"🟠 주의: LT({LEAD_TIME_DAYS}일) ≤ DOS < {SHORTAGE_DAYS}일 | "
+        f"🟢 안정: {SHORTAGE_DAYS}일 ≤ DOS | "
+        f"🔵 과다: DOS > {OVER_DAYS}일"
+    )
     policy_html = f'<div class="header-info-box"><div class="label">🔧 정책 기준</div><div class="value">{policy_text}</div></div>'
     st.markdown(policy_html, unsafe_allow_html=True)
     if use_forecast:
