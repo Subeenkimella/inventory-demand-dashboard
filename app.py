@@ -691,7 +691,7 @@ with tab_time:
     time_df = base_df.copy()
     time_df["est_date_used"] = pd.to_datetime(time_df["est_date_used"], errors="coerce")
 
-    st.markdown("**예상 품절일 타임라인**" + (" (예측)" if use_forecast else " (실적 기반)"))
+    st.markdown("**[SKU 분석] 예상 품절 타임라인**" + (" (예측)" if use_forecast else " (실적 기반)"))
     if not time_df.empty and time_df["est_date_used"].notna().any():
         tl = time_df[time_df["est_date_used"].notna()].copy()
         tl["date"] = tl["est_date_used"]
