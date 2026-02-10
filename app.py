@@ -437,30 +437,30 @@ else:
 
 
 def classify_status(est_date, dos):
-    if pd.isna(est_date) and (pd.isna(dos) or dos <= 0):
+    # 1) DOS가 있으면 DOS를 최우선으로 상태 결정 (운영 관점에서 가장 안정적)
+    if pd.notna(dos):
+        if dos < LEAD_TIME_DAYS:
+            return "🔴", "긴급"
+        if dos < SHORTAGE_DAYS:
+            return "🟠", "주의"
         return "🟢", "안정"
-    est = pd.to_datetime(est_date) if not pd.isna(est_date) else None
-    if est is None:
+
+    # 2) DOS가 없으면(수요 0 등) 날짜로 보조 판단
+    est = pd.to_datetime(est_date, errors="coerce")
+    if pd.isna(est):
+        # 수요가 없어 DOS도/품절일도 산출 불가 → 품절 관점은 안정,
+        # 대신 Action에서 '수요 없음 + 재고 보유'로 잡아야 함
         return "🟢", "안정"
+
     if est < base_date_ts + pd.Timedelta(days=LEAD_TIME_DAYS):
         return "🔴", "긴급"
-    if est < base_date_ts + pd.Timedelta(days=14):
+    if est < base_date_ts + pd.Timedelta(days=SHORTAGE_DAYS):
         return "🟠", "주의"
     return "🟢", "안정"
 
+risk_cnt = int((base_df["dos_used"].notna() & (base_df["dos_used"] < SHORTAGE_DAYS)).sum())
+st.markdown(f"{worst_mark} 현재 재고 상태: {worst_state} · DOS 기준 품절 위험 SKU {risk_cnt}건")
 
-if not base_df.empty:
-    marks, labels = zip(*[classify_status(r["est_date_used"], r["dos_used"]) for _, r in base_df.iterrows()])
-    base_df["_mark"] = list(marks)
-    base_df["상태"] = list(labels)
-else:
-    base_df["_mark"] = []
-    base_df["상태"] = []
-
-base_df["priority_score"] = base_df.apply(
-    lambda r: (r["demand7_used"] or 0) / max((r["dos_used"] or 1), 1),
-    axis=1,
-)
 
 # --- 상단 헤더: 왼쪽 타이틀 + 오른쪽 상단 정책/예측 박스 2개 ---
 col_title, col_boxes = st.columns([2, 1])
@@ -495,7 +495,7 @@ with tab_overview:
             worst_state, worst_mark = "긴급", "🔴"
         elif (base_df["상태"] == "주의").any():
             worst_state, worst_mark = "주의", "🟠"
-    st.markdown(f"{worst_mark} 현재 재고 상태는 {worst_state}입니다.")
+    st.markdown(f"{worst_mark} 현재 재고 상태: {worst_state}")
 
     median_dos_str = f"{median_dos_val:,.1f}일" if pd.notna(median_dos_val) and median_dos_val == median_dos_val else "—"
 
