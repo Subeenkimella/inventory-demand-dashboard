@@ -573,6 +573,7 @@ with tab_overview:
             color_map = {"긴급": "#e85a6f", "주의": "#f9a04d", "안정": "#4ade80"}
             fig_pie = px.pie(status_counts, names="상태", values="count", color="상태", color_discrete_map=color_map, hole=0.4)
             fig_pie.update_layout(showlegend=True)
+            fig_pie.update_traces(textfont_size=16)
             fig_pie = apply_plotly_theme(fig_pie)
             st.plotly_chart(fig_pie, use_container_width=True)
         else:
@@ -796,18 +797,18 @@ with tab_action:
 # ========== 5) 관리자 — 정책 설정 + 예측 모델 설정 ==========
 with tab_admin:
     st.subheader("정책 설정")
-    st.caption("리드타임·품절 위험·재고 과다 기준과 DOS 산정 기간을 설정합니다. 변경 후 다른 탭에서 즉시 반영됩니다.")
+    st.caption("리드타임·품절 위험·재고 과잉 기준과 DOS 산정 기간을 설정합니다. 변경 후 다른 탭에서 즉시 반영됩니다.")
     p1, p2, p3, p4 = st.columns(4)
     with p1:
         st.number_input("리드타임 LT (일)", min_value=1, value=st.session_state.get("admin_lead_time_days", 7), key="admin_lead_time_days", step=1)
     with p2:
         st.number_input("품절 위험 기준 DOS (일)", min_value=1, value=st.session_state.get("admin_shortage_days", 14), key="admin_shortage_days", step=1)
     with p3:
-        st.number_input("재고 과다 기준 DOS (일)", min_value=1, value=st.session_state.get("admin_over_days", 60), key="admin_over_days", step=1)
+        st.number_input("재고 과잉 기준 DOS (일)", min_value=1, value=st.session_state.get("admin_over_days", 60), key="admin_over_days", step=1)
     with p4:
         st.number_input("DOS 산정 기간 (최근 N일)", min_value=1, value=st.session_state.get("admin_dos_basis_days", 14), key="admin_dos_basis_days", step=1)
     if st.session_state.get("admin_over_days", 60) <= st.session_state.get("admin_shortage_days", 14):
-        st.warning("재고 과다 기준이 품절 위험 기준 이하입니다. 저장 시 자동 보정(과다 = 품절위험+1)됩니다.")
+        st.warning("재고 과잉 기준이 품절 위험 기준 이하입니다. 저장 시 자동 보정(과다 = 품절위험+1)됩니다.")
     st.divider()
     st.subheader("예측 모델 설정")
     st.caption("수요 예측에 사용할 모델·학습일·예측일을 설정합니다. 변경 후 다른 탭에서 즉시 반영됩니다.")
