@@ -563,7 +563,6 @@ with tab_overview:
     else:
         c3.caption("DOS는 현재 기준 재고 수량 ÷ 일평균 수요로 산출")
     c4.metric("품절 위험 SKU 수", fmt_qty(stockout_sku_cnt))
-    c4.caption(f"정책 기준 {SHORTAGE_DAYS}일 이내 소진 예상 SKU 수")
 
     st.divider()
     col_pie, col_bar = st.columns(2)
