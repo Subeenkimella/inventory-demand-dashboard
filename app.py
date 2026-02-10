@@ -495,7 +495,7 @@ with tab_overview:
             worst_state, worst_mark = "긴급", "🔴"
         elif (base_df["상태"] == "주의").any():
             worst_state, worst_mark = "주의", "🟠"
-    st.markdown(f"{worst_mark} 현재 재고 상태: {worst_state}")
+    st.markdown(f"{worst_mark} 현재 재고 상태는 {worst_state}입니다.")
 
     median_dos_str = f"{median_dos_val:,.1f}일" if pd.notna(median_dos_val) and median_dos_val == median_dos_val else "—"
 
