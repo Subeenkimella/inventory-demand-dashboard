@@ -570,7 +570,7 @@ with tab_overview:
         st.markdown("**재고 상태 분포**")
         if not base_df.empty:
             status_counts = base_df["상태"].value_counts().rename_axis("상태").reset_index(name="count")
-            color_map = {"긴급": "#e11d48", "주의": "#f97316", "안정": "#22c55e"}
+            color_map = {"긴급": "#f08a9a", "주의": "#fbbf8a", "안정": "#86efac"}
             fig_pie = px.pie(status_counts, names="상태", values="count", color="상태", color_discrete_map=color_map, hole=0.4)
             fig_pie.update_layout(showlegend=True)
             fig_pie = apply_plotly_theme(fig_pie)
@@ -583,7 +583,7 @@ with tab_overview:
             risk_df = base_df[base_df["상태"].isin(["긴급", "주의"])].copy()
             if not risk_df.empty:
                 bar_df = risk_df.groupby("category")["sku"].nunique().reset_index(name="risk_sku_cnt")
-                fig_bar = px.bar(bar_df, x="category", y="risk_sku_cnt", labels={"category": "카테고리", "risk_sku_cnt": "품절 위험 SKU 수"})
+                fig_bar = px.bar(bar_df, x="category", y="risk_sku_cnt", color="category", labels={"category": "카테고리", "risk_sku_cnt": "품절 위험 SKU 수"}, color_discrete_sequence=["#93c5fd", "#a5b4fc", "#c4b5fd", "#f9a8d4"])
                 fig_bar = apply_plotly_theme(fig_bar)
                 st.plotly_chart(fig_bar, use_container_width=True)
             else:
