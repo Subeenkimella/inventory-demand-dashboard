@@ -391,27 +391,17 @@ st.sidebar.selectbox(
 st.sidebar.divider()
 st.sidebar.header("예측 설정")
 st.sidebar.caption("수요 예측 모델·기간. Overview·리스크·발주 탭에 반영")
-horizon_opts = [7, 14, 30, 60]
+horizon_opts = ["ALL", 7, 14, 30, 60]
 model_opts = ["MovingAvg(7)", "MovingAvg(14)", "MovingAvg(30)", "SeasonalNaive(7)"]
-lookback_opts = [90, 180, 365]
-
-# 예측 기간(일): '전체' 옵션 추가
-_horizon_ui_opts = ["전체"] + horizon_opts
-_horizon_state = st.session_state.get("forecast_horizon_days", 14)
-if _horizon_state == "전체":
-    _horizon_index = 0
-elif _horizon_state in horizon_opts:
-    _horizon_index = _horizon_ui_opts.index(_horizon_state)
-else:
-    _horizon_index = _horizon_ui_opts.index(14)
-horizon_days_raw = st.sidebar.selectbox(
+lookback_opts = ["ALL", 90, 180, 365]
+horizon_val = st.sidebar.selectbox(
     "예측 기간(일)",
-    options=_horizon_ui_opts,
-    index=_horizon_index,
-    format_func=lambda x: "전체" if x == "전체" else f"{x}일",
+    options=horizon_opts,
+    index=horizon_opts.index(st.session_state.get("forecast_horizon_days", 14)) if st.session_state.get("forecast_horizon_days", 14) in horizon_opts else 1,
+    format_func=lambda x: "전체" if x == "ALL" else f"{x}일",
     key="forecast_horizon_days",
 )
-horizon_days = max(horizon_opts) if horizon_days_raw == "전체" else horizon_days_raw
+horizon_days = 365 if horizon_val == "ALL" else horizon_val
 _model_help = (
     "MovingAvg(N): 최근 N일 수요 평균으로 일별 예측. 단순·안정적.\n\n"
     "SeasonalNaive(N): 최근 N일 패턴을 일별로 반복. 주간 계절성에 적합."
@@ -423,22 +413,14 @@ model_type = st.sidebar.selectbox(
     key="forecast_model_type",
     help=_model_help,
 )
-_lookback_ui_opts = ["전체"] + lookback_opts
-_lookback_state = st.session_state.get("forecast_lookback_days", 180)
-if _lookback_state == "전체":
-    _lookback_index = 0
-elif _lookback_state in lookback_opts:
-    _lookback_index = _lookback_ui_opts.index(_lookback_state)
-else:
-    _lookback_index = _lookback_ui_opts.index(180)
-lookback_days_raw = st.sidebar.selectbox(
+lookback_val = st.sidebar.selectbox(
     "학습 구간(일)",
-    options=_lookback_ui_opts,
-    index=_lookback_index,
-    format_func=lambda x: "전체" if x == "전체" else f"{x}일",
+    options=lookback_opts,
+    index=lookback_opts.index(st.session_state.get("forecast_lookback_days", 180)) if st.session_state.get("forecast_lookback_days", 180) in lookback_opts else 1,
+    format_func=lambda x: "전체" if x == "ALL" else f"{x}일",
     key="forecast_lookback_days",
 )
-lookback_days = max(lookback_opts) if lookback_days_raw == "전체" else lookback_days_raw
+lookback_days = 365 if lookback_val == "ALL" else lookback_val
 basis_mode = "예측 기준"
 basis_label = "예측 기준"
 # 전역 정책: UI 없이 상수로 고정
