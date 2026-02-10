@@ -419,19 +419,15 @@ lookback_days = st.sidebar.selectbox(
     format_func=lambda x: f"{x}일",
     key="forecast_lookback_days",
 )
-st.sidebar.divider()
-st.sidebar.header("전역 정책")
-# 기준 모드 선택 영역 제거: 대시보드는 예측 기준으로 고정
 basis_mode = "예측 기준"
-st.sidebar.caption("DOS 기준선")
-shortage_days_global = st.sidebar.selectbox("부족 기준(일)", options=[7, 14, 21], index=1, key="global_shortage_days", format_func=lambda x: f"{x}일 미만")
-over_days_global = st.sidebar.selectbox("과잉 기준(일)", options=[30, 60, 90, 120], index=1, key="global_over_days", format_func=lambda x: f"{x}일 초과")
-st.sidebar.caption("발주 정책")
-lead_time_days_global = st.sidebar.number_input("리드타임(일)", min_value=0, value=7, step=1, key="global_lead_time_days")
-target_cover_days_global = st.sidebar.number_input("목표 커버리지(일)", min_value=0, value=14, step=1, key="global_target_cover_days")
-safety_stock_days_global = st.sidebar.number_input("안전재고(일)", min_value=0, value=3, step=1, key="global_safety_stock_days")
-moq_global = st.sidebar.number_input("최소발주수량(MOQ)", min_value=0, value=0, step=1, key="global_moq")
 basis_label = "예측 기준"
+# 전역 정책: UI 없이 상수로 고정
+shortage_days_global = 14
+over_days_global = 60
+lead_time_days_global = 7
+target_cover_days_global = 14
+safety_stock_days_global = 3
+moq_global = 0
 show_only_exceptions = True
 sku_search_term = ""
 cat = st.session_state.get("cat", "ALL")
