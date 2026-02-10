@@ -515,18 +515,45 @@ except Exception:
     summary_overstock_cnt = 0
 
 # --- Tabs ---
-# 위 바 - 글씨 - 아래 바 간격 동일
+# 탭 밑줄·회색 바 굵기/간격 통일 (텍스트~밑줄 8px, 밑줄 3px, 탭 아래 여백 8~12px)
 st.markdown("""
 <style>
-  [data-testid="stTabs"] > div:first-child {
-    padding-top: 1rem;
-    padding-bottom: 1rem;
+  /* 탭 컨테이너: 상하 패딩·하단 마진 고정 */
+  div[data-testid="stTabs"] {
+    padding-top: 12px;
+    padding-bottom: 0;
+    margin-bottom: 0;
   }
-  [data-testid="stTabs"] [role="tab"],
-  [data-testid="stTabs"] [data-baseweb="tab"],
-  [data-testid="stTabs"] > div:first-child > div {
-    padding-top: 0.75rem !important;
-    padding-bottom: 0.75rem !important;
+  /* 탭 버튼 행: 텍스트~밑줄 간격 8px, 하단 회색 바 굵기 3px(밑줄과 동일) */
+  div[data-testid="stTabs"] > div:first-child {
+    padding-top: 12px;
+    padding-bottom: 8px;
+    border-bottom: 3px solid #e5e5e5;
+    margin-bottom: 0;
+  }
+  /* 탭 버튼(글씨) 상하 패딩 통일 */
+  div[data-testid="stTabs"] button,
+  div[data-testid="stTabs"] [role="tab"],
+  div[data-testid="stTabs"] [data-baseweb="tab"],
+  div[data-testid="stTabs"] > div:first-child > div {
+    padding-top: 8px !important;
+    padding-bottom: 8px !important;
+  }
+  /* 활성 탭 밑줄: 굵기 3px, 텍스트와 8px 간격, 회색 바와 같은 기준선 */
+  div[data-testid="stTabs"] [aria-selected="true"] {
+    border-bottom: 3px solid #ff4b4b !important;
+    margin-bottom: -3px !important;
+    padding-bottom: 8px !important;
+  }
+  /* 탭 컨텐츠 영역: 상단 여백 축소(회색 바와 일관된 8~12px) */
+  div[data-testid="stTabs"] > div:last-child {
+    padding-top: 10px !important;
+    margin-top: 0 !important;
+  }
+  div[data-testid="stTabs"] + div[data-testid="stHorizontalBlock"],
+  div[data-testid="stTabs"] + div[data-testid="stVerticalBlock"] {
+    margin-top: 0 !important;
+    padding-top: 10px !important;
   }
 </style>
 """, unsafe_allow_html=True)
