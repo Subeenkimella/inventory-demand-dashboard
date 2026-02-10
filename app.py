@@ -114,6 +114,13 @@ def fmt_days(v):
     return f"{float(v):.1f}"
 
 
+def fmt_rate_per_day(v):
+    """Format daily rate as 'x.x개/일'."""
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return "—"
+    return f"{float(v):.1f}개/일"
+
+
 def fmt_date(v):
     """Format date as YYYY-MM-DD."""
     if v is None or (isinstance(v, float) and pd.isna(v)):
@@ -431,8 +438,6 @@ lookback_val = st.sidebar.selectbox(
     key="forecast_lookback_days",
 )
 lookback_days = 365 if lookback_val == "ALL" else lookback_val
-basis_mode = "예측 기준"
-basis_label = "예측 기준"
 # 전역 정책: UI 없이 상수로 고정
 shortage_days_global = 14
 over_days_global = 60
@@ -471,6 +476,11 @@ latest_inv_df = con.execute(f"""
 forecast_metrics_df = pd.DataFrame()
 if not forecast_daily.empty and not latest_inv_df.empty:
     forecast_metrics_df = compute_forecast_metrics(forecast_daily, latest_inv_df, horizon_days, latest_date)
+
+# 기준 자동 결정: 예측 데이터가 있으면 예측 기준, 없으면 실적 기준
+use_forecast = (not forecast_daily.empty) and (not forecast_metrics_df.empty)
+basis_mode = "예측 기준" if use_forecast else "실적 기준"
+basis_label = basis_mode
 
 # --- 대시보드 헤더: 타이틀 + 현재 선택(필터·예측) ---
 filter_parts = []
