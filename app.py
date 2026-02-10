@@ -549,7 +549,7 @@ with tab_overview:
             worst_state, worst_mark = "주의", "🟠"
 
     risk_cnt = int((base_df["dos_used"].notna() & (base_df["dos_used"] < SHORTAGE_DAYS)).sum()) if not base_df.empty else 0
-    st.markdown(f"{worst_mark} 현재 재고 상태: {worst_state} · 품절 위험 SKU {risk_cnt}건")
+    st.markdown(f"{worst_mark} 현재 재고 상태: {worst_state} · 품절 위험 SKU {risk_cnt}건 입니다.")
 
 
     median_dos_str = f"{median_dos_val:,.1f}일" if pd.notna(median_dos_val) and median_dos_val == median_dos_val else "—"
