@@ -413,6 +413,48 @@ LEFT JOIN demand_30 d30 ON b.sku = d30.sku
 LEFT JOIN demand_14 d14 ON b.sku = d14.sku
 LEFT JOIN demand_7d d7 ON b.sku = d7.sku
 """
+
+# --- 상태 컬럼(상태/마크) 무조건 생성 ---
+def classify_status(est_date, dos):
+    # DOS가 있으면 DOS 기준으로 판단
+    if pd.notna(dos):
+        if dos < LEAD_TIME_DAYS:
+            return "🔴", "긴급"
+        if dos < SHORTAGE_DAYS:
+            return "🟠", "주의"
+        return "🟢", "안정"
+
+    # DOS가 없으면 날짜로 보조 판단
+    est = pd.to_datetime(est_date, errors="coerce")
+    if pd.isna(est):
+        return "🟢", "안정"
+    if est < base_date_ts + pd.Timedelta(days=LEAD_TIME_DAYS):
+        return "🔴", "긴급"
+    if est < base_date_ts + pd.Timedelta(days=SHORTAGE_DAYS):
+        return "🟠", "주의"
+    return "🟢", "안정"
+
+if base_df is None or base_df.empty:
+    base_df = pd.DataFrame()
+    base_df["상태"] = []
+    base_df["_mark"] = []
+else:
+    # dos_used / est_date_used가 아직 없을 수도 있으니 방어
+    if "dos_used" not in base_df.columns:
+        base_df["dos_used"] = base_df.get("coverage_days")
+    if "est_date_used" not in base_df.columns:
+        base_df["est_date_used"] = base_df.get("estimated_stockout_date")
+
+    marks, labels = zip(*[
+        classify_status(r.get("est_date_used"), r.get("dos_used"))
+        for _, r in base_df.iterrows()
+    ])
+    base_df["_mark"] = list(marks)
+    base_df["상태"] = list(labels)
+
+
+
+
 base_df = con.execute(detail_sql).fetchdf()
 
 if use_forecast and not base_df.empty:
