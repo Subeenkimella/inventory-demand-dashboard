@@ -654,8 +654,7 @@ with tab_cause:
         else:
             st.caption("표시할 데이터가 없습니다.")
 
-    st.markdown("**재고 커버 일수가 정책 기준보다 짧고, 수요 영향도가 높은 SKU (우선 점검 대상)**")
-    st.caption("이 테이블은 수요 영향도가 높고 재고 커버 일수가 짧은 우선 점검 대상을 보여줍니다.")
+    st.markdown("**[SKU 분석] 재고 커버 일수가 정책 기준보다 짧고, 수요 영향도가 높아 우선 점검 필요**")
     short_high = health_with_dos[(health_with_dos["dos_used"] < SHORTAGE_DAYS) & (health_with_dos["demand_30d"] > 0)].copy()
     if not short_high.empty:
         demand_p75_val = short_high["demand_30d"].quantile(0.75)
