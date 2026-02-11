@@ -334,19 +334,6 @@ if not use_forecast:
     forecast_daily = pd.DataFrame()
     forecast_metrics_df = pd.DataFrame()
 
-
-def forecast_confidence_label(mape, n):
-    if mape is None or n < 10:
-        return "정보 부족"
-    if mape <= 20:
-        return "높음"
-    if mape <= 40:
-        return "보통"
-    return "낮음"
-
-
-forecast_confidence = forecast_confidence_label(mape_pct, mape_n) if use_forecast else "—"
-
 # --- 공통 KPI/원인/시점/조치용 데이터 (실적 기반 DOH) ---
 kpi_sql = f"""
 WITH base_sku AS (SELECT m.sku, m.category FROM sku_master m WHERE 1=1 {base_where}),
@@ -522,7 +509,7 @@ with col_boxes:
     policy_html = f'<div class="header-info-box"><div class="label">🔧 정책 기준</div><div class="value">{policy_text}</div></div>'
     st.markdown(policy_html, unsafe_allow_html=True)
     if use_forecast:
-        forecast_text = f"{MODEL_NAME} · 학습 {FORECAST_LOOKBACK_DAYS}일 · 예측 {FORECAST_HORIZON_DAYS}일 · 신뢰도 {forecast_confidence}"
+        forecast_text = f"{MODEL_NAME} · 학습 {FORECAST_LOOKBACK_DAYS}일 · 예측 {FORECAST_HORIZON_DAYS}일"
         forecast_html = f'<div class="header-info-box"><div class="label">📈 예측 사용</div><div class="value">{forecast_text}</div></div>'
     else:
         forecast_text = "실적 기반 — 재고회전일수(DOH)만 사용"
@@ -621,6 +608,10 @@ with tab_cause:
         elif (base_df["상태"] == "주의").any():
             worst_state, worst_mark = "주의", "🟠"
     st.markdown(f"{worst_mark} 문제 SKU와 원인을 확인하세요.")
+    st.caption(
+        "※ 수요 수준은 최근 30일 수요의 상·하위 25% 분위수 기준으로 상대 분류합니다. "
+        "재고회전일수(DOH)는 관리자 설정 정책 기준(품절 위험·재고 과잉 일수)을 적용합니다."
+    )
 
     health = base_df.copy()
     health_with_doh = health[health["doh_used"].notna()].copy()
@@ -660,7 +651,7 @@ with tab_cause:
         else:
             st.caption("표시할 데이터가 없습니다.")
 
-    st.markdown("**[SKU 분석] 재고회전일수가 정책 기준보다 짧고, 수요 영향도가 높아 우선 점검 필요한 항목**")
+    st.markdown("**[SKU 분석] 재고회전일수 (DOH) 가 정책 기준보다 짧고, 수요 영향도가 높아 우선 점검 필요한 항목**")
     short_high = health_with_doh[(health_with_doh["doh_used"] < SHORTAGE_DAYS) & (health_with_doh["demand_30d"] > 0)].copy()
     if not short_high.empty:
         demand_p75_val = short_high["demand_30d"].quantile(0.75)
