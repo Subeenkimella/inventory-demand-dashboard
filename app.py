@@ -564,7 +564,8 @@ with tab_overview:
             fig_pie = px.pie(status_counts, names="상태", values="count", color="상태", color_discrete_map=color_map, hole=0.4)
             fig_pie.update_layout(showlegend=True, margin=dict(t=30, b=30, l=30, r=30))
             fig_pie.update_traces(
-                textfont_size=15,
+                textfont_size=44,
+                insidetextfont=dict(size=44),
                 marker=dict(line=dict(color="rgba(255,255,255,0.95)", width=1.5)),
                 pull=[0.01, 0.02, 0],
             )
