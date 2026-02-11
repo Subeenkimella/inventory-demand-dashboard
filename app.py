@@ -560,7 +560,13 @@ with tab_overview:
             color_map = {"긴급": "#e85a6f", "주의": "#f9a04d", "안정": "#4ade80"}
             fig_pie = px.pie(status_counts, names="상태", values="count", color="상태", color_discrete_map=color_map, hole=0.4)
             fig_pie.update_layout(showlegend=True)
-            fig_pie.update_traces(textfont_size=16)
+            fig_pie.update_traces(
+                textfont_size=16,
+                marker=dict(
+                    line=dict(color="rgba(255,255,255,0.9)", width=2),
+                ),
+                pull=[0.02, 0.04, 0.0],
+            )
             fig_pie = apply_plotly_theme(fig_pie)
             st.plotly_chart(fig_pie, use_container_width=True)
         else:
@@ -750,7 +756,11 @@ with tab_time:
             color_discrete_map={"긴급": "#e11d48", "주의": "#f97316", "안정": "#22c55e"},
             hover_data=["sku", "sku_name", "warehouse", "doh_used"]
         )
-        fig_t.update_layout(xaxis_title="예상 소진일", yaxis_title="SKU")
+        fig_t.update_layout(
+            xaxis_title="예상 소진일",
+            yaxis_title="SKU",
+            xaxis=dict(tickformat="%Y-%m-%d"),
+        )
         fig_t = apply_plotly_theme(fig_t)
         st.plotly_chart(fig_t, use_container_width=True)
     else:
