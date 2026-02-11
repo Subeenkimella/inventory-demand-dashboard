@@ -633,9 +633,9 @@ with tab_cause:
             cond_high_short = (health_with_doh["demand_30d"] >= demand_p75) & (health_with_doh["doh_used"] < SHORTAGE_DAYS)
             cond_low_long = (health_with_doh["demand_30d"] <= demand_p25) & (health_with_doh["doh_used"] > OVER_DAYS)
             cond_zero_with_stock = (health_with_doh["demand_30d"] == 0) & (health_with_doh["onhand_qty"] > 0)
-            st.metric("수요 높음 + DOH 짧음", f"{int(cond_high_short.sum()):,}건")
-            st.metric("수요 낮음 + DOH 김", f"{int(cond_low_long.sum()):,}건")
-            st.metric("최근 수요 0 + 재고 보유", f"{int(cond_zero_with_stock.sum()):,}건")
+            st.metric("수요 높음 + 재고회전일수 (DOH) 짧음", f"{int(cond_high_short.sum()):,}건")
+            st.metric("수요 낮음 + 재고회전일수 (DOH) 김", f"{int(cond_low_long.sum()):,}건")
+            st.metric("수요 없음 + 재고 보유", f"{int(cond_zero_with_stock.sum()):,}건")
         else:
             st.caption("원인 분석을 위한 데이터가 부족합니다.")
     with col_chart:
