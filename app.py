@@ -660,7 +660,7 @@ with tab_cause:
         else:
             st.caption("표시할 데이터가 없습니다.")
 
-    st.markdown("**[SKU 분석] 재고 커버 일수가 정책 기준보다 짧고, 수요 영향도가 높아 우선 점검 필요**")
+    st.markdown("**[SKU 분석] 재고회전일수가 정책 기준보다 짧고, 수요 영향도가 높아 우선 점검 필요한 항목**")
     short_high = health_with_dos[(health_with_dos["dos_used"] < SHORTAGE_DAYS) & (health_with_dos["demand_30d"] > 0)].copy()
     if not short_high.empty:
         demand_p75_val = short_high["demand_30d"].quantile(0.75)
@@ -715,7 +715,7 @@ with tab_time:
     else:
         st.caption("예상 소진일 정보가 없습니다.")
 
-    st.markdown("**[SKU 분석] 예상 소진일·DOH·리드타임 대비 상태 확인**" + (" (예측)" if use_forecast else " (실적 기반)"))
+    st.markdown("**[SKU 분석] 재고회전일수·리드타임 대비 현 재고 상태 확인**" + (" (예측)" if use_forecast else " (실적 기반)"))
     show_time = time_df[time_df["dos_used"].notna()].copy()
     show_time = show_time.sort_values(["상태", "est_date_used"], ascending=[True, True])
     if not show_time.empty:
@@ -749,7 +749,8 @@ with tab_action:
     st.markdown(f"{worst_mark} 지금 발주·재고 조정이 필요한 SKU를 우선순위로 정렬했습니다.")
 
     st.markdown("**[SKU 분석] 즉시 발주 또는 재고 조정 검토 필요**" + (" (예측 기반)" if use_forecast else " (실적 기반)"))
-    st.caption("이 테이블은 현 기준 발주·재고 조정이 필요한 SKU별 조치 사유 및 리스크를 보여줍니다. 발주 우선순위 지수는 최근 7일 수요 ÷ max(DOH,1)로 산출합니다. (예측이 있으면 예측 7일 수요 사용)")
+    st.caption("이 테이블은 현 기준 발주·재고 조정이 필요한 SKU별 조치 사유 및 리스크를 보여줍니다. \n"
+                "발주 우선순위 지수는 최근 7일 수요 ÷ max(DOH,1)로 산출합니다. (예측이 있으면 예측 7일 수요 사용)")
 
     action_list = []
     if not base_df.empty:
@@ -764,27 +765,27 @@ with tab_action:
             reason = risk = action = None
             if pd.notna(cov) and cov < SHORTAGE_DAYS and d30 > 0:
                 reason = f"재고회전일수(DOH)가 정책 기준({SHORTAGE_DAYS}일)보다 짧음(현재 {fmt_days(cov)}일)."
-                risk = "발주 지연 시 품절로 이어질 수 있음."
+                risk = "발주 지연 시 품절 발생 가능"
                 action = "발주"
             elif pd.notna(cov) and cov > OVER_DAYS and d30 <= demand_p25:
-                reason = f"재고회전일수(DOH)가 {OVER_DAYS}일을 초과하고 최근 수요가 낮음."
-                risk = "재고 유지 비용·폐기 리스크 증가."
+                reason = f"재고회전일수(DOH)가 {OVER_DAYS}일을 초과하고 최근 수요가 낮음"
+                risk = "재고 유지 비용·폐기 리스크 증가"
                 action = "재고 감축"
             elif d30 == 0 and onhand > 0:
-                reason = "최근 30일 수요가 없는 SKU로 재고만 보유."
-                risk = "재고 부패·폐기 가능성."
+                reason = "최근 30일 수요가 없는 SKU로 재고만 보유"
+                risk = "재고 부패·폐기 가능성 존재"
                 action = "재고 조정 검토"
             else:
                 continue
             action_list.append({
-                "상태 마크": state_mark,
+                "상태": state_mark,
                 "SKU": row["sku"],
                 "품목명": row.get("sku_name", ""),
                 "창고": row.get("warehouse", "—"),
-                "재고 조정 필요 사유": reason,
+                "재고 조정 필요 이유": reason,
                 "재고 리스크": risk,
                 "재고 리스크 권장 조치 사항" : action,
-                "발주 우선순위 지수": row.get("priority_score", 0.0),
+                "발주 우선 순위 지수": row.get("priority_score", 0.0),
             })
 
     action_df = pd.DataFrame(action_list)
