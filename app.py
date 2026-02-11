@@ -869,7 +869,15 @@ with tab_action:
     if not action_df.empty:
         action_df.columns = action_df.columns.str.replace(r"\s+", " ", regex=True).str.strip()
         action_df = action_df.rename(columns={"발주 우선 순위 지수": "발주 우선순위 지수"})
-        action_df = action_df.sort_values("발주 우선순위 지수", ascending=False)
+        # 우선순위: 지수 높은 순 1, 2, 3... (내림차순 → 1이 최우선)
+        score_col = "발주 우선순위 지수"
+        action_df["우선순위"] = action_df[score_col].rank(ascending=False, method="min").astype(int)
+        action_df = action_df.drop(columns=[score_col])
+        action_df = action_df.sort_values("우선순위", ascending=True)
+        # 컬럼 순서: 우선순위를 상태 다음으로
+        cols = [c for c in action_df.columns if c != "우선순위"]
+        idx = cols.index("상태") + 1 if "상태" in cols else 0
+        action_df = action_df[cols[:idx] + ["우선순위"] + cols[idx:]]
         st.dataframe(action_df, use_container_width=True, hide_index=True)
     else:
         st.caption("즉시 발주 또는 재고 조정이 필요한 SKU가 없습니다.")
