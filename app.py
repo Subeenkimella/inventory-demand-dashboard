@@ -854,7 +854,6 @@ with tab_action:
                 "SKU": row["sku"],
                 "품목명": row.get("sku_name", ""),
                 "창고": row.get("warehouse", "—"),
-                "재고 조정 필요 이유": reason,
                 "재고 리스크": risk,
                 "재고 리스크 권장 조치 사항": action,
                 "발주 우선순위 지수": row.get("priority_score", 0.0),
@@ -863,6 +862,7 @@ with tab_action:
                 "안전재고(개)": safety_stock_val,
                 "목표 재고(개)": target_stock_val,
                 "감축 추천 수량(개)": reduce_qty_val,
+                "비고": reason,
             })
 
     action_df = pd.DataFrame(action_list)
