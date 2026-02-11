@@ -8,7 +8,7 @@ import duckdb
 import plotly.express as px
 import math
 
-st.set_page_config(page_title="재고·수요 운영 대시보드", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="재고 운영 대시보드", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
 <style>
@@ -533,7 +533,7 @@ tab_overview, tab_cause, tab_time, tab_action, tab_admin = st.tabs([
     "Overview",
     "재고 위험 SKU 분석",
     "품절 발생 SKU 분석",
-    "권장 발주·재고 분석",
+    "권장 발주·재고 조정 SKU 분석",
     "관리자 페이지(Optional)",
 ])
 
@@ -749,7 +749,7 @@ with tab_action:
     st.markdown(f"{worst_mark} 지금 발주·재고 조정이 필요한 SKU를 우선순위로 정렬했습니다.")
 
     st.markdown("**[SKU 분석] 즉시 발주 또는 재고 조정 검토 필요**" + (" (예측 기반)" if use_forecast else " (실적 기반)"))
-    st.caption("이 테이블은 현 기준 발주·재고 조정이 필요한 SKU별 조치 사유 및 리스크를 보여줍니다. \n 우선순위 점수는 최근 7일간 수요 대비 재고 여유를 고려해, 즉시 대응이 필요한 SKU를 선별하기 위한 상대적 정렬 기준입니다.")
+    st.caption("이 테이블은 현 기준 발주·재고 조정이 필요한 SKU별 조치 사유 및 리스크를 보여줍니다. \n 우선순위 점수는 최근 7수요 대비 재고 여유를 고려해, 즉시 대응이 필요한 SKU를 선별하기 위한 상대적 정렬 기준입니다.")
 
     action_list = []
     if not base_df.empty:
