@@ -613,10 +613,10 @@ with tab_cause:
             worst_state, worst_mark = "긴급", "🔴"
         elif (base_df["상태"] == "주의").any():
             worst_state, worst_mark = "주의", "🟠"
-    st.markdown(f"{worst_mark} 문제 SKU와 원인을 확인하세요.")
+    st.markdown(f"{worst_mark} 문제 SKU 및 원인을 확인하세요.")
     st.caption(
-        "※ 수요 수준은 최근 30일 수요의 상·하위 25% 분위수 기준으로 상대 분류합니다. "
-        "재고회전일수(DOH)는 관리자 설정 정책 기준(품절 위험·재고 과잉 일수)을 적용합니다."
+        "※ 수요 수준은 최근 30일 수요의 상·하위 25% 분위수 기준으로 상대 분류. \n"
+        "재고회전일수(DOH)는 관리자 설정 정책 기준(품절 위험·재고 과잉 일수)을 적용"
     )
 
     health = base_df.copy()
@@ -798,7 +798,7 @@ with tab_action:
             worst_state, worst_mark = "긴급", "🔴"
         elif (base_df["상태"] == "주의").any():
             worst_state, worst_mark = "주의", "🟠"
-    st.markdown(f"{worst_mark} 지금 발주·재고 조정이 필요한 SKU를 우선순위로 정렬했습니다.")
+    st.markdown(f"{worst_mark} 현 시점 발주·재고 조정이 필요한 SKU를 우선순위로 정렬합니다.")
 
     st.markdown("**[SKU 분석] 즉시 발주 또는 재고 조정 검토 필요**" + (" (예측 기반)" if use_forecast else " (실적 기반)"))
     st.caption("이 테이블은 현 기준 발주·재고 조정이 필요한 SKU별 조치 사유 및 리스크를 보여줍니다. \n"
