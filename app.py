@@ -412,6 +412,7 @@ SELECT
   b.sku, b.sku_name, b.category, li.warehouse,
   COALESCE(li.onhand_qty, 0) AS onhand_qty,
   COALESCE(d30.demand_30d, 0) AS demand_30d,
+  COALESCE(d14.demand_14, 0) AS demand_14,
   COALESCE(d7.demand_7d, 0) AS demand_7d,
   CASE WHEN COALESCE(d14.demand_14, 0) > 0
     THEN ROUND(COALESCE(li.onhand_qty, 0) * {DOS_BASIS_DAYS} * 1.0 / NULLIF(d14.demand_14, 0), 1)
@@ -435,7 +436,7 @@ if base_df.empty:
     base_df["demand7_used"] = pd.Series(dtype="float")
 else:
     if use_forecast and not forecast_metrics_df.empty:
-        fm = forecast_metrics_df[["sku", "forecast_dos", "stockout_date_forecast", "forecast_demand_next7"]].drop_duplicates("sku")
+        fm = forecast_metrics_df[["sku", "forecast_dos", "stockout_date_forecast", "forecast_demand_next7", "forecast_avg_daily"]].drop_duplicates("sku")
         base_df = base_df.merge(fm, on="sku", how="left")
         base_df["doh_used"] = base_df.apply(
             lambda r: r["forecast_dos"] if pd.notna(r.get("forecast_dos")) else r["coverage_days"],
@@ -449,10 +450,12 @@ else:
             lambda r: r["forecast_demand_next7"] if pd.notna(r.get("forecast_demand_next7")) else r["demand_7d"],
             axis=1,
         )
+        base_df["avg_daily_demand"] = base_df["forecast_avg_daily"].fillna(0)
     else:
         base_df["doh_used"] = base_df["coverage_days"]
         base_df["est_date_used"] = base_df["estimated_stockout_date"]
         base_df["demand7_used"] = base_df["demand_7d"]
+        base_df["avg_daily_demand"] = (base_df["demand_14"] / DOS_BASIS_DAYS).fillna(0)
 
 
 # --- (C) 상태 컬럼(상태/_mark) 한 번만 생성 ---
@@ -815,10 +818,19 @@ with tab_action:
             state_label = row.get("상태", "안정")
 
             reason = risk = action = None
+            leadtime_demand_val = rec_qty_val = safety_stock_val = 0
             if pd.notna(cov) and cov < SHORTAGE_DAYS and d30 > 0:
                 reason = f"재고회전일수(DOH)가 정책 기준({SHORTAGE_DAYS}일)보다 짧음(현재 {fmt_days(cov)}일)."
                 risk = "발주 지연 시 품절 발생 가능"
                 action = "발주"
+                avg_d = float(row.get("avg_daily_demand") or 0)
+                if avg_d > 0 and not pd.isna(avg_d):
+                    leadtime_demand_val = avg_d * LEAD_TIME_DAYS
+                    safety_stock_val = 0
+                    rec_qty_val = max(0, math.ceil(leadtime_demand_val + safety_stock_val - onhand))
+                    reason += f" 리드타임({LEAD_TIME_DAYS}일) 예상 수요 대비 현재고 부족 → 추천 발주 {rec_qty_val}개"
+                else:
+                    reason += " (수요 정보 부족)"
             elif pd.notna(cov) and cov > OVER_DAYS and d30 <= demand_p25:
                 reason = f"재고회전일수(DOH)가 {OVER_DAYS}일을 초과하고 최근 수요가 낮음"
                 risk = "재고 유지 비용·폐기 리스크 증가"
@@ -836,8 +848,11 @@ with tab_action:
                 "창고": row.get("warehouse", "—"),
                 "재고 조정 필요 이유": reason,
                 "재고 리스크": risk,
-                "재고 리스크 권장 조치 사항" : action,
+                "재고 리스크 권장 조치 사항": action,
                 "발주 우선순위 지수": row.get("priority_score", 0.0),
+                "리드타임 수요(개)": int(round(leadtime_demand_val)),
+                "추천 발주 수량(개)": rec_qty_val,
+                "안전재고(개)": safety_stock_val,
             })
 
     action_df = pd.DataFrame(action_list)
