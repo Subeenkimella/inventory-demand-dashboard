@@ -646,6 +646,56 @@ with tab_cause:
             add_ref_hline(fig, SHORTAGE_DAYS, f"품절 위험 기준({SHORTAGE_DAYS}일)", line_color="crimson")
             add_ref_hline(fig, OVER_DAYS, f"재고 과다 검토 기준({OVER_DAYS}일)", line_color="steelblue")
             add_ref_vline(fig, demand_p75, "수요 상위 25%", line_color="gray")
+            # 왼쪽 카드 3개(수요·DOH 조건)의 위치를 매트릭스에서 직관적으로 보여주기 위해
+            # 해당 조건에 속하는 점들에 동그라미 테두리 오버레이를 추가
+            cond_high_short_chart = (health_with_doh["demand_30d"] >= demand_p75) & (health_with_doh["doh_used"] < SHORTAGE_DAYS)
+            cond_low_long_chart = (health_with_doh["demand_30d"] <= demand_p25) & (health_with_doh["doh_used"] > OVER_DAYS)
+            cond_zero_with_stock_chart = (health_with_doh["demand_30d"] == 0) & (health_with_doh["onhand_qty"] > 0)
+
+            hs_pts = health_with_doh[cond_high_short_chart]
+            if not hs_pts.empty:
+                fig.add_scatter(
+                    x=hs_pts["demand_30d"],
+                    y=hs_pts["doh_used"],
+                    mode="markers",
+                    marker=dict(
+                        size=22,
+                        symbol="circle-open",
+                        line=dict(color="#b91c1c", width=2),
+                    ),
+                    showlegend=False,
+                    hoverinfo="skip",
+                )
+
+            ll_pts = health_with_doh[cond_low_long_chart]
+            if not ll_pts.empty:
+                fig.add_scatter(
+                    x=ll_pts["demand_30d"],
+                    y=ll_pts["doh_used"],
+                    mode="markers",
+                    marker=dict(
+                        size=22,
+                        symbol="circle-open",
+                        line=dict(color="#1d4ed8", width=2),
+                    ),
+                    showlegend=False,
+                    hoverinfo="skip",
+                )
+
+            zs_pts = health_with_doh[cond_zero_with_stock_chart]
+            if not zs_pts.empty:
+                fig.add_scatter(
+                    x=zs_pts["demand_30d"],
+                    y=zs_pts["doh_used"],
+                    mode="markers",
+                    marker=dict(
+                        size=22,
+                        symbol="circle-open",
+                        line=dict(color="#374151", width=2),
+                    ),
+                    showlegend=False,
+                    hoverinfo="skip",
+                )
             fig = apply_plotly_theme(fig)
             st.plotly_chart(fig, use_container_width=True)
         else:
