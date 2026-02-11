@@ -819,6 +819,7 @@ with tab_action:
 
             reason = risk = action = None
             leadtime_demand_val = rec_qty_val = safety_stock_val = 0
+            target_stock_val = reduce_qty_val = 0
             if pd.notna(cov) and cov < SHORTAGE_DAYS and d30 > 0:
                 reason = f"재고회전일수(DOH)가 정책 기준({SHORTAGE_DAYS}일)보다 짧음(현재 {fmt_days(cov)}일)."
                 risk = "발주 지연 시 품절 발생 가능"
@@ -835,6 +836,13 @@ with tab_action:
                 reason = f"재고회전일수(DOH)가 {OVER_DAYS}일을 초과하고 최근 수요가 낮음"
                 risk = "재고 유지 비용·폐기 리스크 증가"
                 action = "재고 감축"
+                avg_d = float(row.get("avg_daily_demand") or 0)
+                if avg_d > 0 and not pd.isna(avg_d):
+                    target_stock_val = math.ceil(OVER_DAYS * avg_d)
+                    reduce_qty_val = max(0, math.ceil(onhand - target_stock_val))
+                    reason += f" 현재 DOH({fmt_days(cov)}일) → 목표 DOH({OVER_DAYS}일) 조정 시 감축 수량 {reduce_qty_val}개"
+                else:
+                    reason += " (수요 정보 부족)"
             elif d30 == 0 and onhand > 0:
                 reason = "최근 30일 수요가 없는 SKU로 재고만 보유"
                 risk = "재고 부패·폐기 가능성 존재"
@@ -853,6 +861,8 @@ with tab_action:
                 "리드타임 수요(개)": int(round(leadtime_demand_val)),
                 "추천 발주 수량(개)": rec_qty_val,
                 "안전재고(개)": safety_stock_val,
+                "목표 재고(개)": target_stock_val,
+                "감축 추천 수량(개)": reduce_qty_val,
             })
 
     action_df = pd.DataFrame(action_list)
