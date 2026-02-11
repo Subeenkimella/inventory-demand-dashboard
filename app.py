@@ -778,10 +778,11 @@ with tab_time:
             "sku_name": "품목명",
             "warehouse": "창고",
             "_mark": "상태 마크",
+            "상태": "품절 대비 재고 상태",
         })
         disp_t = disp_t.drop(columns=["est_date_used", "doh_used"])
         state_order = {"긴급": 0, "주의": 1, "안정": 2}
-        disp_t["_order"] = disp_t["상태"].map(state_order)
+        disp_t["_order"] = disp_t["품절 대비 재고 상태"].map(state_order)
         disp_t = disp_t.sort_values(["_order", "예상 소진일"])
         disp_t = disp_t.drop(columns=["_order"])
         st.dataframe(disp_t, use_container_width=True, hide_index=True)
