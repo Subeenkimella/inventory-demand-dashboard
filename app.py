@@ -8,7 +8,7 @@ import duckdb
 import plotly.express as px
 import math
 
-st.set_page_config(page_title="재고 운영 대시보드", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="재고·수요 운영 대시보드", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
 <style>
@@ -514,10 +514,10 @@ with col_title:
     st.title("재고·수요 운영 대시보드")
 with col_boxes:
     policy_text = (
-        f"🔴 긴급: DOS < LT({LEAD_TIME_DAYS}일) | "
-        f"🟠 주의: LT({LEAD_TIME_DAYS}일) ≤ DOS < {SHORTAGE_DAYS}일 | "
-        f"🟢 안정: {SHORTAGE_DAYS}일 ≤ DOS | "
-        f"🔵 과다: DOS > {OVER_DAYS}일"
+        f"🔴 긴급: DOH < LT({LEAD_TIME_DAYS}일) | "
+        f"🟠 주의: LT({LEAD_TIME_DAYS}일) ≤ DOH < {SHORTAGE_DAYS}일 | "
+        f"🟢 안정: {SHORTAGE_DAYS}일 ≤ DOH | "
+        f"🔵 과다: DOH > {OVER_DAYS}일"
     )
     policy_html = f'<div class="header-info-box"><div class="label">🔧 정책 기준</div><div class="value">{policy_text}</div></div>'
     st.markdown(policy_html, unsafe_allow_html=True)
@@ -525,7 +525,7 @@ with col_boxes:
         forecast_text = f"{MODEL_NAME} · 학습 {FORECAST_LOOKBACK_DAYS}일 · 예측 {FORECAST_HORIZON_DAYS}일 · 신뢰도 {forecast_confidence}"
         forecast_html = f'<div class="header-info-box"><div class="label">📈 예측 사용</div><div class="value">{forecast_text}</div></div>'
     else:
-        forecast_text = "실적 기반 — Days of Supply (재고 커버 일수, DOS)만 사용"
+        forecast_text = "실적 기반 — 재고회전일수(DOH)만 사용"
         forecast_html = f'<div class="header-info-box"><div class="label">📈 예측</div><div class="value">{forecast_text}</div></div>'
     st.markdown(forecast_html, unsafe_allow_html=True)
 
@@ -533,7 +533,7 @@ tab_overview, tab_cause, tab_time, tab_action, tab_admin = st.tabs([
     "Overview",
     "재고 위험 SKU 분석",
     "품절 발생 SKU 분석",
-    "권장 발주·재고 조정 SKU 분석",
+    "발주·재고 조정 필요 SKU 분석",
     "관리자 페이지(Optional)",
 ])
 
@@ -557,11 +557,11 @@ with tab_overview:
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("전체 재고 수량", fmt_qty(total_onhand) + "개")
     c2.metric("전체 수요 합계(최근 7일)", fmt_qty(demand_cur_7) + "개")
-    c3.metric("Days of Supply(재고커버일수, DOS) 중앙값", median_dos_str)
+    c3.metric("재고회전일수 중앙값(DOH)", median_dos_str)
     if pd.notna(median_dos_val) and median_dos_val == median_dos_val:
         _cmp = "정책 기준(" + str(SHORTAGE_DAYS) + "일) 대비 여유 있음" if median_dos_val >= SHORTAGE_DAYS else "정책 기준(" + str(SHORTAGE_DAYS) + "일) 미만으로 주의 필요"
     else:
-        c3.caption("DOS는 현재 기준 재고 수량 ÷ 일평균 수요로 산출")
+        c3.caption("DOH(재고회전일수)는 현재 기준 재고 수량 ÷ 일평균 수요로 산출합니다.")
     c4.metric("품절 위험 SKU 수", fmt_qty(stockout_sku_cnt) + "개")
 
     st.divider()
@@ -633,8 +633,8 @@ with tab_cause:
             cond_high_short = (health_with_dos["demand_30d"] >= demand_p75) & (health_with_dos["dos_used"] < SHORTAGE_DAYS)
             cond_low_long = (health_with_dos["demand_30d"] <= demand_p25) & (health_with_dos["dos_used"] > OVER_DAYS)
             cond_zero_with_stock = (health_with_dos["demand_30d"] == 0) & (health_with_dos["onhand_qty"] > 0)
-            st.metric("수요 높음 + DOS 짧음", f"{int(cond_high_short.sum()):,}건")
-            st.metric("수요 낮음 + DOS 김", f"{int(cond_low_long.sum()):,}건")
+            st.metric("수요 높음 + DOH 짧음", f"{int(cond_high_short.sum()):,}건")
+            st.metric("수요 낮음 + DOH 김", f"{int(cond_low_long.sum()):,}건")
             st.metric("최근 수요 0 + 재고 보유", f"{int(cond_zero_with_stock.sum()):,}건")
         else:
             st.caption("원인 분석을 위한 데이터가 부족합니다.")
@@ -649,9 +649,9 @@ with tab_cause:
                 color="상태",
                 color_discrete_map={"긴급": "#e11d48", "주의": "#f97316", "안정": "#22c55e"},
                 hover_data=["sku", "sku_name", "onhand_qty", "demand_30d", "dos_used"],
-                title="수요 × 재고 커버 일수(DOS) 매트릭스",
+                title="수요 × 재고회전일수(DOH) 매트릭스",
             )
-            fig.update_layout(xaxis_title="최근 30일 수요(개)", yaxis_title="재고 커버 일수(DOS)")
+            fig.update_layout(xaxis_title="최근 30일 수요(개)", yaxis_title="재고회전일수(DOH)")
             add_ref_hline(fig, SHORTAGE_DAYS, f"품절 위험 기준({SHORTAGE_DAYS}일)", line_color="crimson")
             add_ref_hline(fig, OVER_DAYS, f"재고 과잉 검토 기준({OVER_DAYS}일)", line_color="steelblue")
             add_ref_vline(fig, demand_p75, "수요 상위 25%", line_color="gray")
@@ -675,7 +675,7 @@ with tab_cause:
             "warehouse": "창고",
             "onhand_qty": "현재고(개)",
             "demand_30d": "최근 30일 수요(개)",
-            "dos_used": "재고 커버 일수(DOS)",
+            "dos_used": "재고회전일수(DOH)",
             "_mark": "상태 마크",
         })
         st.dataframe(disp, use_container_width=True, hide_index=True)
@@ -709,33 +709,33 @@ with tab_time:
             color_discrete_map={"긴급": "#e11d48", "주의": "#f97316", "안정": "#22c55e"},
             hover_data=["sku", "sku_name", "warehouse", "dos_used"]
         )
-        fig_t.update_layout(xaxis_title="예상 품절일", yaxis_title="SKU")
+        fig_t.update_layout(xaxis_title="예상 소진일", yaxis_title="SKU")
         fig_t = apply_plotly_theme(fig_t)
         st.plotly_chart(fig_t, use_container_width=True)
     else:
-        st.caption("예상 품절일 정보가 없습니다.")
+        st.caption("예상 소진일 정보가 없습니다.")
 
-    st.markdown("**[SKU 분석] 예상 품절일·DOS·리드타임 대비 상태 확인**" + (" (예측)" if use_forecast else " (실적 기반)"))
+    st.markdown("**[SKU 분석] 예상 소진일·DOH·리드타임 대비 상태 확인**" + (" (예측)" if use_forecast else " (실적 기반)"))
     show_time = time_df[time_df["dos_used"].notna()].copy()
     show_time = show_time.sort_values(["상태", "est_date_used"], ascending=[True, True])
     if not show_time.empty:
         disp_t = show_time[["sku", "sku_name", "warehouse", "est_date_used", "dos_used", "_mark", "상태"]].copy()
-        disp_t["예상 품절일"] = disp_t["est_date_used"].apply(fmt_date)
-        disp_t["재고 커버 일수(DOS)"] = disp_t["dos_used"].apply(lambda x: fmt_days(x) + "일" if pd.notna(x) else "—")
+        disp_t["예상 소진일"] = disp_t["est_date_used"].apply(fmt_date)
+        disp_t["재고회전일수(DOH)"] = disp_t["dos_used"].apply(lambda x: fmt_days(x) + "일" if pd.notna(x) else "—")
         disp_t = disp_t.rename(columns={
             "sku": "SKU",
             "sku_name": "품목명",
             "warehouse": "창고",
             "_mark": "상태 마크",
         })
-        # 긴급이 위로 오도록 상태 순서 정렬
+        disp_t = disp_t.drop(columns=["est_date_used", "dos_used"])
         state_order = {"긴급": 0, "주의": 1, "안정": 2}
         disp_t["_order"] = disp_t["상태"].map(state_order)
-        disp_t = disp_t.sort_values(["_order", "예상 품절일"])
+        disp_t = disp_t.sort_values(["_order", "예상 소진일"])
         disp_t = disp_t.drop(columns=["_order"])
         st.dataframe(disp_t, use_container_width=True, hide_index=True)
     else:
-        st.caption("DOS가 산출된 SKU가 없습니다.")
+        st.caption("DOH가 산출된 SKU가 없습니다.")
 
 # ========== 4) 권장 발주·재고 조정 (Action) — 4) 무엇을 조치해야 하는가? ==========
 with tab_action:
@@ -749,7 +749,7 @@ with tab_action:
     st.markdown(f"{worst_mark} 지금 발주·재고 조정이 필요한 SKU를 우선순위로 정렬했습니다.")
 
     st.markdown("**[SKU 분석] 즉시 발주 또는 재고 조정 검토 필요**" + (" (예측 기반)" if use_forecast else " (실적 기반)"))
-    st.caption("이 테이블은 현 기준 발주·재고 조정이 필요한 SKU별 조치 사유 및 리스크를 보여줍니다. \n 우선순위 점수는 최근 7수요 대비 재고 여유를 고려해, 즉시 대응이 필요한 SKU를 선별하기 위한 상대적 정렬 기준입니다.")
+    st.caption("이 테이블은 현 기준 발주·재고 조정이 필요한 SKU별 조치 사유 및 리스크를 보여줍니다. 발주 우선순위 지수는 최근 7일 수요 ÷ max(DOH,1)로 산출합니다. (예측이 있으면 예측 7일 수요 사용)")
 
     action_list = []
     if not base_df.empty:
@@ -763,11 +763,11 @@ with tab_action:
 
             reason = risk = action = None
             if pd.notna(cov) and cov < SHORTAGE_DAYS and d30 > 0:
-                reason = f"재고 커버 일수가 정책 기준({SHORTAGE_DAYS}일)보다 짧음(현재 {fmt_days(cov)}일)."
+                reason = f"재고회전일수(DOH)가 정책 기준({SHORTAGE_DAYS}일)보다 짧음(현재 {fmt_days(cov)}일)."
                 risk = "발주 지연 시 품절로 이어질 수 있음."
                 action = "발주"
             elif pd.notna(cov) and cov > OVER_DAYS and d30 <= demand_p25:
-                reason = f"재고 커버 일수가 {OVER_DAYS}일을 초과하고 최근 수요가 낮음."
+                reason = f"재고회전일수(DOH)가 {OVER_DAYS}일을 초과하고 최근 수요가 낮음."
                 risk = "재고 유지 비용·폐기 리스크 증가."
                 action = "재고 감축"
             elif d30 == 0 and onhand > 0:
@@ -784,12 +784,12 @@ with tab_action:
                 "재고 조정 필요 사유": reason,
                 "재고 리스크": risk,
                 "재고 리스크 권장 조치 사항" : action,
-                "우선순위 점수": row.get("priority_score", 0.0),
+                "발주 우선순위 지수": row.get("priority_score", 0.0),
             })
 
     action_df = pd.DataFrame(action_list)
     if not action_df.empty:
-        action_df = action_df.sort_values("우선순위 점수", ascending=False)
+        action_df = action_df.sort_values("발주 우선순위 지수", ascending=False)
         st.dataframe(action_df, use_container_width=True, hide_index=True)
     else:
         st.caption("즉시 발주 또는 재고 조정이 필요한 SKU가 없습니다.")
@@ -797,18 +797,18 @@ with tab_action:
 # ========== 5) 관리자 — 정책 설정 + 예측 모델 설정 ==========
 with tab_admin:
     st.subheader("정책 설정")
-    st.caption("리드타임·품절 위험·재고 과잉 기준과 DOS 산정 기간을 설정합니다. 변경 후 다른 탭에서 즉시 반영됩니다.")
+    st.caption("리드타임·품절 위험·재고 과다 기준과 DOH(재고회전일수) 산정 기간을 설정합니다. 변경 후 다른 탭에서 즉시 반영됩니다.")
     p1, p2, p3, p4 = st.columns(4)
     with p1:
         st.number_input("리드타임 LT (일)", min_value=1, value=st.session_state.get("admin_lead_time_days", 7), key="admin_lead_time_days", step=1)
     with p2:
-        st.number_input("품절 위험 기준 DOS (일)", min_value=1, value=st.session_state.get("admin_shortage_days", 14), key="admin_shortage_days", step=1)
+        st.number_input("품절 위험 기준 DOH (일)", min_value=1, value=st.session_state.get("admin_shortage_days", 14), key="admin_shortage_days", step=1)
     with p3:
-        st.number_input("재고 과잉 기준 DOS (일)", min_value=1, value=st.session_state.get("admin_over_days", 60), key="admin_over_days", step=1)
+        st.number_input("재고 과다 기준 DOH (일)", min_value=1, value=st.session_state.get("admin_over_days", 60), key="admin_over_days", step=1)
     with p4:
-        st.number_input("DOS 산정 기간 (최근 N일)", min_value=1, value=st.session_state.get("admin_dos_basis_days", 14), key="admin_dos_basis_days", step=1)
+        st.number_input("DOH 산정 기간 (최근 N일)", min_value=1, value=st.session_state.get("admin_dos_basis_days", 14), key="admin_dos_basis_days", step=1)
     if st.session_state.get("admin_over_days", 60) <= st.session_state.get("admin_shortage_days", 14):
-        st.warning("재고 과잉 기준이 품절 위험 기준 이하입니다. 저장 시 자동 보정(과다 = 품절위험+1)됩니다.")
+        st.warning("재고 과다 기준이 품절 위험 기준 이하입니다. 저장 시 자동 보정(과다 = 품절위험+1)됩니다.")
     st.divider()
     st.subheader("예측 모델 설정")
     st.caption("수요 예측에 사용할 모델·학습일·예측일을 설정합니다. 변경 후 다른 탭에서 즉시 반영됩니다.")
