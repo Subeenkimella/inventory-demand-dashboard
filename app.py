@@ -347,7 +347,7 @@ def forecast_confidence_label(mape, n):
 
 forecast_confidence = forecast_confidence_label(mape_pct, mape_n) if use_forecast else "—"
 
-# --- 공통 KPI/원인/시점/조치용 데이터 (실적 기반 DOS) ---
+# --- 공통 KPI/원인/시점/조치용 데이터 (실적 기반 DOH) ---
 kpi_sql = f"""
 WITH base_sku AS (SELECT m.sku, m.category FROM sku_master m WHERE 1=1 {base_where}),
 latest_inv AS (
@@ -368,7 +368,7 @@ demand_7 AS (
   JOIN base_sku b ON d.sku = b.sku
   WHERE d.date > '{base_date}'::DATE - INTERVAL 7 DAY AND d.date <= '{base_date}'
 ),
-sku_dos AS (
+sku_doh AS (
   SELECT
     b.sku,
     b.category,
@@ -382,10 +382,10 @@ sku_dos AS (
   LEFT JOIN demand_14 d ON b.sku = d.sku
 )
 SELECT
-  (SELECT COALESCE(SUM(onhand_qty), 0) FROM sku_dos) AS total_onhand,
+  (SELECT COALESCE(SUM(onhand_qty), 0) FROM sku_doh) AS total_onhand,
   (SELECT COALESCE(v, 0) FROM demand_7) AS demand_cur_7,
-  (SELECT MEDIAN(coverage_days) FROM sku_dos WHERE coverage_days IS NOT NULL) AS median_dos,
-  (SELECT COUNT(*) FROM sku_dos WHERE coverage_days IS NOT NULL AND coverage_days < {SHORTAGE_DAYS}) AS stockout_sku_cnt
+  (SELECT MEDIAN(coverage_days) FROM sku_doh WHERE coverage_days IS NOT NULL) AS median_dos,
+  (SELECT COUNT(*) FROM sku_doh WHERE coverage_days IS NOT NULL AND coverage_days < {SHORTAGE_DAYS}) AS stockout_sku_cnt
 """
 kpi_row = con.execute(kpi_sql).fetchdf().iloc[0]
 total_onhand = int(pd.to_numeric(kpi_row["total_onhand"], errors="coerce")) if pd.notna(kpi_row["total_onhand"]) else 0
@@ -440,17 +440,17 @@ LEFT JOIN demand_7d d7 ON b.sku = d7.sku
 """
 base_df = con.execute(detail_sql).fetchdf()
 
-# --- (A) base_df 생성 직후: 예측 merge 및 dos_used/est_date_used/demand7_used 생성 ---
+# --- (A) base_df 생성 직후: 예측 merge 및 doh_used / est_date_used / demand7_used 생성 ---
 if base_df.empty:
     # 빈 경우에도 아래 컬럼들이 존재하도록 미리 생성
-    base_df["dos_used"] = pd.Series(dtype="float")
+    base_df["doh_used"] = pd.Series(dtype="float")
     base_df["est_date_used"] = pd.Series(dtype="datetime64[ns]")
     base_df["demand7_used"] = pd.Series(dtype="float")
 else:
     if use_forecast and not forecast_metrics_df.empty:
         fm = forecast_metrics_df[["sku", "forecast_dos", "stockout_date_forecast", "forecast_demand_next7"]].drop_duplicates("sku")
         base_df = base_df.merge(fm, on="sku", how="left")
-        base_df["dos_used"] = base_df.apply(
+        base_df["doh_used"] = base_df.apply(
             lambda r: r["forecast_dos"] if pd.notna(r.get("forecast_dos")) else r["coverage_days"],
             axis=1,
         )
@@ -463,25 +463,25 @@ else:
             axis=1,
         )
     else:
-        base_df["dos_used"] = base_df["coverage_days"]
+        base_df["doh_used"] = base_df["coverage_days"]
         base_df["est_date_used"] = base_df["estimated_stockout_date"]
         base_df["demand7_used"] = base_df["demand_7d"]
 
 
 # --- (C) 상태 컬럼(상태/_mark) 한 번만 생성 ---
-def classify_status(est_date, dos):
-    # 1) DOS가 있으면 DOS를 최우선으로 상태 결정 (운영 관점에서 가장 안정적)
-    if pd.notna(dos):
-        if dos < LEAD_TIME_DAYS:
+def classify_status(est_date, doh):
+    # 1) DOH가 있으면 DOH를 최우선으로 상태 결정 (운영 관점에서 가장 안정적)
+    if pd.notna(doh):
+        if doh < LEAD_TIME_DAYS:
             return "🔴", "긴급"
-        if dos < SHORTAGE_DAYS:
+        if doh < SHORTAGE_DAYS:
             return "🟠", "주의"
         return "🟢", "안정"
 
-    # 2) DOS가 없으면(수요 0 등) 날짜로 보조 판단
+    # 2) DOH가 없으면(수요 0 등) 날짜로 보조 판단
     est = pd.to_datetime(est_date, errors="coerce")
     if pd.isna(est):
-        # 수요가 없어 DOS도/품절일도 산출 불가 → 품절 관점은 안정,
+        # 수요가 없어 DOH/예상 소진일 산출 불가 → 품절 관점은 안정,
         # 대신 Action에서 '수요 없음 + 재고 보유'로 잡아야 함
         return "🟢", "안정"
 
@@ -496,14 +496,14 @@ if base_df.empty:
     base_df["상태"] = pd.Series(dtype="object")
 else:
     marks, labels = zip(*[
-        classify_status(r.get("est_date_used"), r.get("dos_used"))
+        classify_status(r.get("est_date_used"), r.get("doh_used"))
         for _, r in base_df.iterrows()
     ])
     base_df["_mark"] = list(marks)
     base_df["상태"] = list(labels)
 
 base_df["priority_score"] = base_df.apply(
-    lambda r: (r.get("demand7_used") or 0) / max((r.get("dos_used") or 1), 1),
+    lambda r: (r.get("demand7_used") or 0) / max((r.get("doh_used") or 1), 1),
     axis=1,
 )
 
@@ -548,7 +548,7 @@ with tab_overview:
         elif (base_df["상태"] == "주의").any():
             worst_state, worst_mark = "주의", "🟠"
 
-    risk_cnt = int((base_df["dos_used"].notna() & (base_df["dos_used"] < SHORTAGE_DAYS)).sum()) if not base_df.empty else 0
+    risk_cnt = int((base_df["doh_used"].notna() & (base_df["doh_used"] < SHORTAGE_DAYS)).sum()) if not base_df.empty else 0
     st.markdown(f"{worst_mark} 현재 재고 상태는 {worst_state}으로, 품절 위험 SKU {risk_cnt}건 입니다.")
 
 
@@ -600,11 +600,11 @@ with tab_overview:
         urgent_mask = base_df["상태"] == "긴급"
         warn_mask = base_df["상태"] == "주의"
         high_demand = base_df["demand_30d"] >= base_df["demand_30d"].quantile(0.75)
-        low_dos = base_df["dos_used"].notna() & (base_df["dos_used"] < SHORTAGE_DAYS)
-        high_demand_low_dos = (high_demand & low_dos)
+        low_doh = base_df["doh_used"].notna() & (base_df["doh_used"] < SHORTAGE_DAYS)
+        high_demand_low_doh = (high_demand & low_doh)
         n_urgent = int(urgent_mask.sum())
         n_warn = int(warn_mask.sum())
-        n_hdld = int(high_demand_low_dos.sum())
+        n_hdld = int(high_demand_low_doh.sum())
     else:
         n_urgent = n_warn = n_hdld = 0
     col_a.markdown(f"🔴 LT 이전 품절 예상 : {n_urgent}건")
@@ -623,37 +623,37 @@ with tab_cause:
     st.markdown(f"{worst_mark} 문제 SKU와 원인을 확인하세요.")
 
     health = base_df.copy()
-    health_with_dos = health[health["dos_used"].notna()].copy()
+    health_with_doh = health[health["doh_used"].notna()].copy()
 
     col_cards, col_chart = st.columns([1, 2])
     with col_cards:
-        if not health_with_dos.empty:
-            demand_p75 = float(health_with_dos["demand_30d"].quantile(0.75))
-            demand_p25 = float(health_with_dos["demand_30d"].quantile(0.25))
-            cond_high_short = (health_with_dos["demand_30d"] >= demand_p75) & (health_with_dos["dos_used"] < SHORTAGE_DAYS)
-            cond_low_long = (health_with_dos["demand_30d"] <= demand_p25) & (health_with_dos["dos_used"] > OVER_DAYS)
-            cond_zero_with_stock = (health_with_dos["demand_30d"] == 0) & (health_with_dos["onhand_qty"] > 0)
+        if not health_with_doh.empty:
+            demand_p75 = float(health_with_doh["demand_30d"].quantile(0.75))
+            demand_p25 = float(health_with_doh["demand_30d"].quantile(0.25))
+            cond_high_short = (health_with_doh["demand_30d"] >= demand_p75) & (health_with_doh["doh_used"] < SHORTAGE_DAYS)
+            cond_low_long = (health_with_doh["demand_30d"] <= demand_p25) & (health_with_doh["doh_used"] > OVER_DAYS)
+            cond_zero_with_stock = (health_with_doh["demand_30d"] == 0) & (health_with_doh["onhand_qty"] > 0)
             st.metric("수요 높음 + DOH 짧음", f"{int(cond_high_short.sum()):,}건")
             st.metric("수요 낮음 + DOH 김", f"{int(cond_low_long.sum()):,}건")
             st.metric("최근 수요 0 + 재고 보유", f"{int(cond_zero_with_stock.sum()):,}건")
         else:
             st.caption("원인 분석을 위한 데이터가 부족합니다.")
     with col_chart:
-        if not health_with_dos.empty:
-            demand_p75 = float(health_with_dos["demand_30d"].quantile(0.75))
+        if not health_with_doh.empty:
+            demand_p75 = float(health_with_doh["demand_30d"].quantile(0.75))
             fig = px.scatter(
-                health_with_dos,
+                health_with_doh,
                 x="demand_30d",
-                y="dos_used",
+                y="doh_used",
                 size="demand_30d",
                 color="상태",
                 color_discrete_map={"긴급": "#e11d48", "주의": "#f97316", "안정": "#22c55e"},
-                hover_data=["sku", "sku_name", "onhand_qty", "demand_30d", "dos_used"],
+                hover_data=["sku", "sku_name", "onhand_qty", "demand_30d", "doh_used"],
                 title="수요 × 재고회전일수(DOH) 매트릭스",
             )
             fig.update_layout(xaxis_title="최근 30일 수요(개)", yaxis_title="재고회전일수(DOH)")
             add_ref_hline(fig, SHORTAGE_DAYS, f"품절 위험 기준({SHORTAGE_DAYS}일)", line_color="crimson")
-            add_ref_hline(fig, OVER_DAYS, f"재고 과잉 검토 기준({OVER_DAYS}일)", line_color="steelblue")
+            add_ref_hline(fig, OVER_DAYS, f"재고 과다 검토 기준({OVER_DAYS}일)", line_color="steelblue")
             add_ref_vline(fig, demand_p75, "수요 상위 25%", line_color="gray")
             fig = apply_plotly_theme(fig)
             st.plotly_chart(fig, use_container_width=True)
@@ -661,21 +661,21 @@ with tab_cause:
             st.caption("표시할 데이터가 없습니다.")
 
     st.markdown("**[SKU 분석] 재고회전일수가 정책 기준보다 짧고, 수요 영향도가 높아 우선 점검 필요한 항목**")
-    short_high = health_with_dos[(health_with_dos["dos_used"] < SHORTAGE_DAYS) & (health_with_dos["demand_30d"] > 0)].copy()
+    short_high = health_with_doh[(health_with_doh["doh_used"] < SHORTAGE_DAYS) & (health_with_doh["demand_30d"] > 0)].copy()
     if not short_high.empty:
         demand_p75_val = short_high["demand_30d"].quantile(0.75)
-        short_high = short_high[short_high["demand_30d"] >= demand_p75_val].sort_values("dos_used", ascending=True)
-        disp = short_high[["sku", "sku_name", "warehouse", "onhand_qty", "demand_30d", "dos_used", "_mark", "상태"]].copy()
+        short_high = short_high[short_high["demand_30d"] >= demand_p75_val].sort_values("doh_used", ascending=True)
+        disp = short_high[["sku", "sku_name", "warehouse", "onhand_qty", "demand_30d", "doh_used", "_mark", "상태"]].copy()
         disp["onhand_qty"] = disp["onhand_qty"].apply(fmt_qty)
         disp["demand_30d"] = disp["demand_30d"].apply(fmt_qty)
-        disp["dos_used"] = disp["dos_used"].apply(lambda x: fmt_days(x) + "일" if pd.notna(x) else "—")
+        disp["doh_used"] = disp["doh_used"].apply(lambda x: fmt_days(x) + "일" if pd.notna(x) else "—")
         disp = disp.rename(columns={
             "sku": "SKU",
             "sku_name": "품목명",
             "warehouse": "창고",
             "onhand_qty": "현재고(개)",
             "demand_30d": "최근 30일 수요(개)",
-            "dos_used": "재고회전일수(DOH)",
+            "doh_used": "재고회전일수(DOH)",
             "_mark": "상태 마크",
         })
         st.dataframe(disp, use_container_width=True, hide_index=True)
@@ -696,7 +696,7 @@ with tab_time:
     time_df = base_df.copy()
     time_df["est_date_used"] = pd.to_datetime(time_df["est_date_used"], errors="coerce")
 
-    st.markdown("**[SKU 분석] 예상 품절 타임라인**" + (" (예측)" if use_forecast else " (실적 기반)"))
+    st.markdown("**[SKU 분석] 예상 소진일 타임라인**" + (" (예측)" if use_forecast else " (실적 기반)"))
     if not time_df.empty and time_df["est_date_used"].notna().any():
         tl = time_df[time_df["est_date_used"].notna()].copy()
         tl["date"] = tl["est_date_used"]
@@ -707,7 +707,7 @@ with tab_time:
             y="sku",
             color="상태",
             color_discrete_map={"긴급": "#e11d48", "주의": "#f97316", "안정": "#22c55e"},
-            hover_data=["sku", "sku_name", "warehouse", "dos_used"]
+            hover_data=["sku", "sku_name", "warehouse", "doh_used"]
         )
         fig_t.update_layout(xaxis_title="예상 소진일", yaxis_title="SKU")
         fig_t = apply_plotly_theme(fig_t)
@@ -716,19 +716,19 @@ with tab_time:
         st.caption("예상 소진일 정보가 없습니다.")
 
     st.markdown("**[SKU 분석] 재고회전일수·리드타임 대비 현 재고 상태 확인**" + (" (예측)" if use_forecast else " (실적 기반)"))
-    show_time = time_df[time_df["dos_used"].notna()].copy()
+    show_time = time_df[time_df["doh_used"].notna()].copy()
     show_time = show_time.sort_values(["상태", "est_date_used"], ascending=[True, True])
     if not show_time.empty:
-        disp_t = show_time[["sku", "sku_name", "warehouse", "est_date_used", "dos_used", "_mark", "상태"]].copy()
+        disp_t = show_time[["sku", "sku_name", "warehouse", "est_date_used", "doh_used", "_mark", "상태"]].copy()
         disp_t["예상 소진일"] = disp_t["est_date_used"].apply(fmt_date)
-        disp_t["재고회전일수(DOH)"] = disp_t["dos_used"].apply(lambda x: fmt_days(x) + "일" if pd.notna(x) else "—")
+        disp_t["재고회전일수(DOH)"] = disp_t["doh_used"].apply(lambda x: fmt_days(x) + "일" if pd.notna(x) else "—")
         disp_t = disp_t.rename(columns={
             "sku": "SKU",
             "sku_name": "품목명",
             "warehouse": "창고",
             "_mark": "상태 마크",
         })
-        disp_t = disp_t.drop(columns=["est_date_used", "dos_used"])
+        disp_t = disp_t.drop(columns=["est_date_used", "doh_used"])
         state_order = {"긴급": 0, "주의": 1, "안정": 2}
         disp_t["_order"] = disp_t["상태"].map(state_order)
         disp_t = disp_t.sort_values(["_order", "예상 소진일"])
@@ -756,7 +756,7 @@ with tab_action:
     if not base_df.empty:
         demand_p25 = float(base_df["demand_30d"].quantile(0.25)) if not base_df["demand_30d"].empty else 0
         for _, row in base_df.iterrows():
-            cov = row.get("dos_used")
+            cov = row.get("doh_used")
             onhand = int(row.get("onhand_qty", 0) or 0)
             d30 = float(row.get("demand_30d", 0) or 0)
             state_mark = row.get("_mark", "🟢")
@@ -790,6 +790,8 @@ with tab_action:
 
     action_df = pd.DataFrame(action_list)
     if not action_df.empty:
+        action_df.columns = action_df.columns.str.replace(r"\s+", " ", regex=True).str.strip()
+        action_df = action_df.rename(columns={"발주 우선 순위 지수": "발주 우선순위 지수"})
         action_df = action_df.sort_values("발주 우선순위 지수", ascending=False)
         st.dataframe(action_df, use_container_width=True, hide_index=True)
     else:
