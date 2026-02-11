@@ -802,7 +802,7 @@ with tab_action:
 
     st.markdown("**[SKU 분석] 즉시 발주 또는 재고 조정 검토 필요**" + (" (예측 기반)" if use_forecast else " (실적 기반)"))
     st.caption("이 테이블은 현 기준 발주·재고 조정이 필요한 SKU별 조치 사유 및 리스크를 보여줍니다. \n"
-                "발주 우선순위 지수는 최근 7일 수요 ÷ max(DOH,1)로 산출합니다. (예측이 있으면 예측 7일 수요 사용)")
+                "우선순위 지수는 최근 7일 수요 ÷ max(DOH,1)로 산출합니다. (예측이 있으면 예측 7일 수요 사용)")
 
     action_list = []
     if not base_df.empty:
